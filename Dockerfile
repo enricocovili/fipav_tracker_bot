@@ -13,7 +13,7 @@ COPY pyproject.toml uv.lock ./
 RUN pip install --upgrade pip && pip install -e .
 
 # Copy the rest of the application code
-COPY . .
+COPY src/ /app/src/
 
 # Run the application
-CMD ["python", "main.py"]
+CMD ["python", "src/main.py"]
