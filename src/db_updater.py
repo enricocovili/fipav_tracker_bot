@@ -1,7 +1,7 @@
 import psycopg2
 
 
-class PeriodicScanner:
+class DbUpdater:
     def __init__(self) -> None:
         pass
 
@@ -19,6 +19,6 @@ class PeriodicScanner:
 
 
 if __name__ == "__main__":
-    scanner = PeriodicScanner()
+    scanner = DbUpdater()
     scanner.perform_scan()
     scanner.notify_subscribed_users()

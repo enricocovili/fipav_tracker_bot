@@ -208,3 +208,4 @@ __marimo__/
 
 # telegram
 *.session
+*.session-journal

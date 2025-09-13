@@ -1,9 +1,8 @@
 from telethon import events, Button
 import logging
-import requests, bs4
 import pandas as pd
 import json
-import handlers.BaseHandler as BaseHandler
+import handlers.base_handler as base_handler
 
 
 URL_TEST_TODO_REMOVE = "https://www.fipav.mo.it/fipav/new/calendari.jsp?cat=1DM&girone=B&descr=PRIMA+DIVISIONE+MASCHILE+&squadra=MARKING+PRODUCTS+ARTIGLIO"
@@ -141,8 +140,8 @@ class Match:
         return f"{self.home_team} vs {self.away_team}"
 
 
-class Artiglio(BaseHandler.BaseHandler):
-    def create_tables(self, teams_data, image: bool = False, local: bool = True):
+class Artiglio(base_handler.BaseHandler):
+    def create_tables(teams_data, image: bool = False, local: bool = True):
         data = {
             "#": [
                 team.local_rank if local else team.global_rank for team in teams_data
@@ -207,26 +206,9 @@ class Artiglio(BaseHandler.BaseHandler):
         else:
             return df.to_string()
 
-    def load_teams(self, url: str):
-        teams = []
-        res = requests.get(url)
-        res.raise_for_status()
-        soup = bs4.BeautifulSoup(res.text, "html.parser")
-        table = soup.select("table")[0]
-        rows = table.select("tr")
-        for row in rows:
-            cols = row.select("td")
-            if len(cols) == 0:
-                continue
-            team = Team(
-                "A" if "girone=A" in url else "B", *[col.getText() for col in cols]
-            )
-            teams.append(team)
-        return teams
-
-    def get_full_ranks(self, local: bool = True):
-        teams = load_teams(URL_TEST_TODO_REMOVE)
-        teams = teams + load_teams(
+    def get_full_ranks(local: bool = True):
+        teams = Artiglio.load_teams(URL_TEST_TODO_REMOVE)
+        teams = teams + Artiglio.load_teams(
             URL_TEST_TODO_REMOVE.split("girone=B")[0] + "girone=A"
         )
         if local:
@@ -254,27 +236,10 @@ class Artiglio(BaseHandler.BaseHandler):
             team.global_rank = i + 1
         return teams
 
-    def get_matches(self):
-        res = requests.get(URL_TEST_TODO_REMOVE)
-        res.raise_for_status()
-        soup = bs4.BeautifulSoup(res.text, "html.parser")
-        matches = []
-        for match in soup.select("table")[1].select("tr"):
-            if not "dispari" in match.get("class", []) and not "pari" in match.get(
-                "class", []
-            ):
-                continue
-            cols = match.select("td")
-            if len(cols) == 0:
-                continue
-            matches.append(Match(*[col.getText() for col in cols]))
-            matches[-1].result = matches[-1].result[0:5]
-        return matches
-
-    async def ranking(self, event: events.newmessage.NewMessage.Event, local: bool):
+    async def ranking(event: events.newmessage.NewMessage.Event, local: bool):
         logging.info(f"received: ranking: {'girone' if local else 'avulsa'}")
         loading_msg = await event.client.send_message(event.chat, "Loading...")
-        teams = get_full_ranks(local)
+        teams = Artiglio.get_full_ranks(local)
         # open teams.json and check if the teams are the same as the ones in the ranking
         json_team_data = [team.to_json() for team in teams]
         reuse_table = False
@@ -294,7 +259,7 @@ class Artiglio(BaseHandler.BaseHandler):
             with open("teams.json", "w") as f:
                 json.dump(json_team_data, f, indent=4)
             # hardcode the image for now
-            create_tables(teams, image=True, local=local)
+            Artiglio.create_tables(teams, image=True, local=local)
         await loading_msg.delete()
         await event.client.send_file(
             event.chat,
@@ -302,9 +267,9 @@ class Artiglio(BaseHandler.BaseHandler):
             caption=f"Classifica {'Girone' if local else 'Avulsa'}",
         )
 
-    def artiglio_stats(self, event: events.newmessage.NewMessage.Event):
-        teams = get_full_ranks()
-        matches = get_matches()
+    def artiglio_stats(event: events.newmessage.NewMessage.Event):
+        teams = Artiglio.get_full_ranks()
+        matches = Artiglio.get_matches()
 
         info_artiglio = [team for team in teams if "artiglio" in team.name.lower()][0]
 
@@ -328,7 +293,7 @@ class Artiglio(BaseHandler.BaseHandler):
                 {next_match.week_day + " " + next_match.date + " " + next_match.time}
                 vs {next_match.away_team if "artiglio" in next_match.home_team.lower() else next_match.home_team} 
                 ({"casa" if "artiglio" in next_match.home_team.lower() else "ospiti"})
-            ⬤ **Ultima partita**: 
+            ⬤ **Ultima partita**:
                 {last_match.week_day + " " + last_match.date + " " + last_match.time}
                 vs {last_match.away_team if "artiglio" in last_match.home_team.lower() else last_match.home_team}
                 ({last_match.result}) ({"casa" if "artiglio" in last_match.home_team.lower() else "ospiti"})
@@ -357,13 +322,13 @@ class Artiglio(BaseHandler.BaseHandler):
         output = ""
         html_parse = False
         if event.data == b"artiglio__local_rank":
-            output = await self.ranking(event, local=True)
+            output = await Artiglio.ranking(event, local=True)
             html_parse = True
         elif event.data == b"artiglio__global_rank":
-            output = await self.ranking(event, local=False)
+            output = await Artiglio.ranking(event, local=False)
             html_parse = True
         elif event.data == b"artiglio__stats":
-            output = self.artiglio_stats(event)
+            output = Artiglio.artiglio_stats(event)
         elif event.data == b"artiglio__close_menu":
             return await event.delete()
         if output:

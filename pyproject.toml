@@ -8,6 +8,7 @@ dependencies = [
     "aiohttp>=3.12.15",
     "bs4>=0.0.2",
     "dotenv>=0.9.9",
+    "matplotlib>=3.10.6",
     "pandas>=2.3.2",
     "psycopg2-binary>=2.9.10",
     "requests>=2.32.5",
