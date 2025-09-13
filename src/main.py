@@ -5,7 +5,7 @@ from telethon.sync import TelegramClient
 from telethon import events
 import logging
 
-import handlers
+import handlers.artiglio
 
 # Set up logging: DEBUG and up to file, INFO and up to console
 log_formatter = logging.Formatter(
