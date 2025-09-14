@@ -9,6 +9,7 @@ class Championship(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
+    group = Column(String(10))
     season = Column(String(9), nullable=False)
 
     teams = relationship(
@@ -33,6 +34,7 @@ class Team(Base):
         Integer, ForeignKey("championships.id", ondelete="CASCADE"), nullable=False
     )
 
+    rank = Column(Integer, default=0)
     points = Column(Integer, default=0)
     matches_won = Column(Integer, default=0)
     matches_lost = Column(Integer, default=0)
