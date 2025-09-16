@@ -12,7 +12,7 @@ log_formatter = logging.Formatter(
     "%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
 )
 
-file_handler = logging.FileHandler("bot.log")
+file_handler = logging.FileHandler("logs/bot.log")
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(log_formatter)
 

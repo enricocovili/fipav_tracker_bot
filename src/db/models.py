@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP
+from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -9,8 +9,10 @@ class Championship(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
-    group = Column(String(10))
-    season = Column(String(9), nullable=False)
+    group_name = Column(String(10))
+    url = Column(String(255), nullable=False)
+    start_year = Column(Integer, nullable=False)
+    end_year = Column(Integer, nullable=False)
 
     teams = relationship(
         "Team", back_populates="championship", cascade="all, delete-orphan"
@@ -20,8 +22,7 @@ class Championship(Base):
     )
 
     __table_args__ = (
-        # enforce uniqueness on name+season
-        {"sqlite_autoincrement": True},
+        UniqueConstraint("name", "group_name", "start_year", "end_year"),
     )
 
 
@@ -57,6 +58,10 @@ class Team(Base):
         "Match", foreign_keys="[Match.away_team_id]", back_populates="away_team"
     )
 
+    __table_args__ = (
+        UniqueConstraint("name"),
+    )
+
 
 class Match(Base):
     __tablename__ = "matches"
@@ -76,6 +81,7 @@ class Match(Base):
     result = Column(String(50), nullable=False)  # "3-1" or full set scores
     city = Column(String(100))
     address = Column(String(200))
+    maps_url = Column(String(255))
 
     championship = relationship("Championship", back_populates="matches")
     home_team = relationship(
@@ -83,4 +89,9 @@ class Match(Base):
     )
     away_team = relationship(
         "Team", foreign_keys=[away_team_id], back_populates="away_matches"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("championship_id", "match_date",
+                         "home_team_id", "away_team_id"),
     )

@@ -31,8 +31,8 @@ def get_session():
     except Exception:
         session.rollback()
         raise
-    finally:
-        session.close()
+    # finally:
+        # session.close()
 
 
 def with_session(func):
@@ -108,6 +108,11 @@ def get_team_by_id(db, team_id):
 
 
 @with_session
+def get_team_by_name(db, team_name):
+    return db.query(Team).filter_by(name=team_name).all()
+
+
+@with_session
 def get_teams_by_championship(db, championship_id):
     return db.query(Team).filter_by(championship_id=championship_id).all()
 
@@ -136,10 +141,11 @@ def delete_team(db, team_id):
 # -------------------
 
 @with_session
-def create_match(db, championship_id, match_date, home_team_id, away_team_id, result, city=None, address=None):
+def create_match(db, championship_id, match_date, home_team_id, away_team_id, result, weekday=None, city=None, address=None):
     match = Match(
         championship_id=championship_id,
         match_date=match_date,
+        weekday=weekday,
         home_team_id=home_team_id,
         away_team_id=away_team_id,
         result=result,

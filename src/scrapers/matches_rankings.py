@@ -1,9 +1,10 @@
 import requests
 import bs4
 import db.models
+from scrapers.base_scraper import BaseScraper
 
 
-class MatchesRankingsScraper:
+class MatchesRankingsScraper(BaseScraper):
     RANKING_ROW_FIELDS = {
         0: "rank",
         1: "name",
@@ -20,10 +21,9 @@ class MatchesRankingsScraper:
         12: "sets_won",
         13: "sets_lost",
         14: None,  # set ratio
-        15: "points_won",
-        16: "points_scored",
-        17: "points_conceded",
-        18: None,  # penalties
+        15: "points_scored",
+        16: "points_conceded",
+        17: None,  # penalties
     }
 
     MATCH_ROW_FIELDS = {
@@ -39,9 +39,8 @@ class MatchesRankingsScraper:
         9: None          # Skip
     }
 
-    @staticmethod
-    def get_matches(url: str):
-        res = requests.get(url)
+    def get_matches(self, url: str) -> list[dict]:
+        res = self.session.get(url)
         res.raise_for_status()
         soup = bs4.BeautifulSoup(res.text, "html.parser")
         matches = []
@@ -53,14 +52,23 @@ class MatchesRankingsScraper:
             cols = match.select("td")
             if len(cols) == 0:
                 continue
-            matches.append(db.models.Match(*[col.getText() for col in cols]))
-            matches[-1].result = matches[-1].result[0:5]
+            match = {}
+            for idx, col in enumerate(cols):
+                field = MatchesRankingsScraper.MATCH_ROW_FIELDS.get(idx)
+                if idx == 0:
+                    partial_link = col.find("a").get("href", None)
+                    if partial_link:
+                        match[field] = "/".join(url.split("/")
+                                                [:3]) + "/" + partial_link
+                elif field:
+                    match[field] = col.getText()
+            match['result'] = match['result'][0:5]
+            matches.append(match)
         return matches
 
-    @staticmethod
-    def load_teams(url: str):
+    def load_teams(self, url: str) -> list[dict]:
         teams = []
-        res = requests.get(url)
+        res = self.session.get(url)
         res.raise_for_status()
         soup = bs4.BeautifulSoup(res.text, "html.parser")
         table = soup.select("table")[0]
@@ -69,10 +77,10 @@ class MatchesRankingsScraper:
             cols = row.select("td")
             if len(cols) == 0:
                 continue
-            team = db.models.Team()
+            team = {}
             for idx, col in enumerate(cols):
                 field = MatchesRankingsScraper.RANKING_ROW_FIELDS.get(idx)
                 if field:
-                    setattr(team, field, col.getText())
+                    team[field] = col.getText()
             teams.append(team)
         return teams
