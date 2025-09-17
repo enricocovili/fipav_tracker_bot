@@ -1,6 +1,4 @@
-import requests
 import bs4
-import db.models
 from scrapers.base_scraper import BaseScraper
 
 

@@ -1,7 +1,11 @@
 
-import requests
 import bs4
 from scrapers.base_scraper import BaseScraper
+
+
+"""
+
+"""
 
 
 class InfoMatchScraper(BaseScraper):

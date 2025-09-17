@@ -2,10 +2,9 @@ import os
 from functools import wraps
 from contextlib import contextmanager
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
+from sqlalchemy.orm import sessionmaker, scoped_session, Session
 
-from db.models import Base, Championship, Team, Match  # import your ORM models
-
+from db.models import Championship, Team, Match, Standing, User
 
 # -------------------
 # Database setup
@@ -58,15 +57,18 @@ def create_championship(db, name, url, season, group=None):
 
 
 @with_session
+def get_all_championships(db):
+    return db.query(Championship).all()
+
+
+@with_session
 def get_championship_by_id(db, ch_id):
     return db.get(Championship, ch_id)
 
 
 @with_session
-def get_championships(db, season=None):
-    q = db.query(Championship)
-    if season:
-        q = q.filter_by(season=season)
+def get_championships_by_name(db, name):
+    q = db.query(Championship).filter_by(name=name)
     return q.all()
 
 
@@ -94,8 +96,8 @@ def delete_championship(db, ch_id):
 # -------------------
 
 @with_session
-def create_team(db, name, championship_id):
-    team = Team(name=name, championship_id=championship_id)
+def create_team(db, name):
+    team = Team(name=name)
     db.add(team)
     db.flush()
     db.refresh(team)
@@ -114,19 +116,9 @@ def get_team_by_name(db, team_name):
 
 @with_session
 def get_teams_by_championship(db, championship_id):
-    return db.query(Team).filter_by(championship_id=championship_id).all()
-
-
-@with_session
-def update_team_stats(db, team_id, **fields):
-    team = db.get(Team, team_id)
-    if not team:
-        return None
-    for k, v in fields.items():
-        setattr(team, k, v)
-    db.flush()
-    db.refresh(team)
-    return team
+    return db.query(Team).join(Standing, Team.id == Standing.team_id).filter(
+        Standing.championship_id == championship_id
+    ).all()
 
 
 @with_session
@@ -195,8 +187,109 @@ def delete_match(db, match_id):
 
 
 # -------------------
+# Standings
+# -------------------
+
+@with_session
+def create_standing(db, team_id, championship_id):
+    standing = Standing(championship_id=championship_id, team_id=team_id)
+    db.add(standing)
+    db.flush()
+    db.refresh(standing)
+    return standing
+
+
+@with_session
+def get_standing_by_id(db, standing_id):
+    return db.get(Standing, standing_id)
+
+
+@with_session
+def get_standings_in_championship(db, championship_id, sorted=True):
+    q = db.query(Standing).filter_by(championship_id=championship_id)
+    if sorted:
+        q = q.order_by(
+            Standing.points.desc(),
+            Standing.wins.desc(),
+            (Standing.sets_won / Standing.sets_lost).desc(),
+            (Standing.points_scored / Standing.points_conceded).desc()
+        )
+    return q.all()
+
+
+@with_session
+def update_standing(db, standing_id, **fields):
+    standing = db.get(Standing, standing_id)
+    if not standing:
+        return None
+    for k, v in fields.items():
+        setattr(standing, k, v)
+    db.flush()
+    db.refresh(standing)
+    return standing
+
+
+@with_session
+def delete_standing(db, standing_id):
+    standing = db.get(Standing, standing_id)
+    if standing:
+        db.delete(standing)
+
+
+# -------------------
+# Users
+# -------------------
+
+@with_session
+def create_user(db: Session, id: int, username: str, tracked_championship: int = None, tracked_team: int = None):
+    user = User(
+        id=id,
+        username=username,
+        tracked_championship=tracked_championship,
+        tracked_team=tracked_team,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@with_session
+def get_user(db: Session, user_id: int):
+    return db.query(User).filter(User.id == user_id).first()
+
+
+@with_session
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(User).all()
+
+
+@with_session
+def update_user(db: Session, user_id: int, **kwargs):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    for key, value in kwargs.items():
+        setattr(user, key, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@with_session
+def delete_user(db: Session, user_id: int):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    db.delete(user)
+    db.commit()
+    return user
+
+
+# -------------------
 # Utilities
 # -------------------
+
 
 @with_session
 def get_table(db, championship_id):

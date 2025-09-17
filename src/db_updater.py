@@ -25,19 +25,22 @@ class DbUpdater:
     def __init__(self) -> None:
         self.match_scraper = rankings.MatchesRankingsScraper()
         self.details_scraper = match_details.InfoMatchScraper()
+        self.notify: bool = False
 
     def _populate_teams_matches(self, championship) -> None:
-        for team in self.match_scraper.load_teams(championship.url):
-            team['championship_id'] = str(championship.id)
+        for data in self.match_scraper.load_teams(championship.url):
+            data['championship_id'] = str(championship.id)
             try:
-                _team = db.crud.create_team(
-                    team.get('name'), team.get('championship_id'))
+                _team = db.crud.create_team(data.get('name'))
+                _standing = db.crud.create_standing(_team.id, championship.id)
             except sqlalchemy.exc.IntegrityError as e:
                 logging.debug(
-                    f"Not adding team {team.get('name')} as it\'s already existent")
+                    f"Not adding team {data.get('name')} as it\'s already existent")
                 continue
-            logging.debug(f"adding {team.get('name', 'None')} to db")
-            db.crud.update_team_stats(_team.id, **team)
+            logging.debug(f"adding {data.get('name', 'None')} to db")
+
+            if _standing != db.crud.update_standing(_standing.id, **data):
+                self.notify = True
 
         for match in self.match_scraper.get_matches(championship.url):
             try:
@@ -77,7 +80,7 @@ class DbUpdater:
         """
         Perform a scan based on the selection provided by the database
         """
-        for championship in db.crud.get_championships():
+        for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
 
     def notify_subscribed_users(self) -> None:

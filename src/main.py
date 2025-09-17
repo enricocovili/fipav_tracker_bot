@@ -5,7 +5,7 @@ from telethon.sync import TelegramClient
 from telethon import events
 import logging
 
-import handlers.artiglio
+import handlers.menu
 
 # Set up logging: DEBUG and up to file, INFO and up to console
 log_formatter = logging.Formatter(
@@ -33,12 +33,10 @@ bot_token = str(os.getenv("BOT_TOKEN"))
 async def main():
     bot = TelegramClient("bot", api_id, api_hash)
 
-    @bot.on(events.NewMessage(pattern="/start"))
-    async def handler(event):
-        await event.reply("Hey!")
+    bot.add_event_handler(handlers.menu.MainMenu.handle)
+    bot.add_event_handler(handlers.menu.MainMenu.callback)
 
-    bot.add_event_handler(handlers.artiglio.Artiglio.handle)
-    bot.add_event_handler(handlers.artiglio.Artiglio.callback)
+    bot.users_state = {}
 
     await bot.start(bot_token=bot_token)
 

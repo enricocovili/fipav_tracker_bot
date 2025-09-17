@@ -4,12 +4,11 @@ import pandas as pd
 import json
 import handlers.base_handler as base_handler
 import scrapers.matches_rankings as scraper
+import db.crud
+from db.user_state import UserState, UserStateEnum
 
 
-URL_TEST_TODO_REMOVE = "https://www.fipav.mo.it/fipav/new/calendari.jsp?cat=1DM&girone=B&descr=PRIMA+DIVISIONE+MASCHILE+&squadra=MARKING+PRODUCTS+ARTIGLIO"
-
-
-class Artiglio(base_handler.BaseHandler):
+class MainMenu(base_handler.BaseHandler):
     def create_tables(teams_data, image: bool = False, local: bool = True):
         data = {
             "#": [
@@ -75,36 +74,6 @@ class Artiglio(base_handler.BaseHandler):
         else:
             return df.to_string()
 
-    def get_full_ranks(local: bool = True):
-        teams = scraper.MatchesRankingsScraper.load_teams(URL_TEST_TODO_REMOVE)
-        teams = teams + scraper.MatchesRankingsScraper.load_teams(
-            URL_TEST_TODO_REMOVE.split("girone=B")[0] + "girone=A"
-        )
-        if local:
-            # sort the teams based on (order is important): points, number of wins, QS, QP
-            # get only the teams in the same round as artiglio
-            artiglio_round = [
-                team for team in teams if "artiglio" in team.name.lower()
-            ][0].round
-            teams = [team for team in teams if team.round == artiglio_round]
-            teams.sort(
-                key=lambda x: (x.points, x.won, x.set_ratio, x.points_ratio),
-                reverse=True,
-            )
-        else:
-            # sort the teams based on (order is important): local rank, points/played, QS, QP
-            teams.sort(
-                key=lambda x: (
-                    x.local_rank,
-                    -x.points / x.played,
-                    -x.set_ratio,
-                    -x.points_ratio,
-                )
-            )
-        for i, team in enumerate(teams):
-            team.global_rank = i + 1
-        return teams
-
     async def ranking(event: events.newmessage.NewMessage.Event, local: bool):
         logging.info(f"received: ranking: {'girone' if local else 'avulsa'}")
         loading_msg = await event.client.send_message(event.chat, "Loading...")
@@ -136,11 +105,13 @@ class Artiglio(base_handler.BaseHandler):
             caption=f"Classifica {'Girone' if local else 'Avulsa'}",
         )
 
-    def artiglio_stats(event: events.newmessage.NewMessage.Event):
+    def team_stats(event: events.newmessage.NewMessage.Event):
         teams = Artiglio.get_full_ranks()
-        matches = scraper.MatchesRankingsScraper.get_matches(URL_TEST_TODO_REMOVE)
+        matches = scraper.MatchesRankingsScraper.get_matches(
+            URL_TEST_TODO_REMOVE)
 
-        info_artiglio = [team for team in teams if "artiglio" in team.name.lower()][0]
+        info_artiglio = [
+            team for team in teams if "artiglio" in team.name.lower()][0]
 
         last_match = scraper.Match("", "", "", "", "", "", "", "", "", "")
         next_match = scraper.Match("", "", "", "", "", "", "", "", "", "")
@@ -184,44 +155,104 @@ class Artiglio(base_handler.BaseHandler):
         )
         return output
 
-    @events.register(events.CallbackQuery)
-    async def callback(event):
-        if not event.data.startswith(b"artiglio__"):
-            return
-        output = ""
-        html_parse = False
-        if event.data == b"artiglio__local_rank":
-            output = await Artiglio.ranking(event, local=True)
-            html_parse = True
-        elif event.data == b"artiglio__global_rank":
-            output = await Artiglio.ranking(event, local=False)
-            html_parse = True
-        elif event.data == b"artiglio__stats":
-            output = Artiglio.artiglio_stats(event)
-        elif event.data == b"artiglio__close_menu":
-            return await event.delete()
-        if output:
-            return await event.client.send_message(
-                event.chat, output[:4000], parse_mode="html" if html_parse else "md"
-            )
-
-    @events.register(events.NewMessage(pattern="/artiglio"))
-    async def handle(event: events.newmessage.NewMessage):
-        bot = event.client
-        await bot.send_message(
+    async def user_choice(event: events.newmessage.NewMessage.Event):
+        await event.client.send_message(
             event.chat,
-            message="Select one of the options below",
+            message=f"SELEZIONE:{event.client.users_state[event.chat_id].championship_selected}\nCosa vuoi fare?",
             buttons=[
                 [
                     Button.inline(
-                        f"🥇 Classifica Girone", data=b"artiglio__local_rank"
-                    ),
-                    Button.inline(
-                        "🥇 Classifica Avulsa", data=b"artiglio__global_rank"
-                    ),
+                        "🔔 Abilita notifiche per squadra singola",
+                        b"_menu_enable_single_notification")
                 ],
-                [Button.inline("📊 Info & next match", data=b"artiglio__stats")],
-                [Button.url("🔗 Pagina web FIPAV 🔗", url=URL_TEST_TODO_REMOVE)],
-                [Button.inline("❌ Close Menu ❌", data=b"artiglio__close_menu")],
+                [
+                    Button.inline(
+                        "🔔 Abilita notifiche per campionato",
+                        b"_menu_enable_championship_notification")
+                ],
+                [
+                    Button.inline(
+                        "ℹ️ Informazioni su una squadra",
+                        b"_menu_get_team_info",
+                    )
+                ],
+                [
+                    Button.inline(
+                        "ℹ️ Classifica di un campionato",
+                        b"_menu_campionship_rankings",
+                    )
+                ]
+            ],
+        )
+
+    @events.register(events.CallbackQuery)
+    async def callback(event: events.newmessage.NewMessage.Event):
+        if event.data.decode().startswith("_championship_choice_"):
+            event.client.users_state[event.chat_id].championship_selected = event.data.decode(
+            ).split("_")[-1]
+            await MainMenu.user_choice(event)
+            await event.delete()
+            return
+
+        campionato = db.crud.get_championships_by_name(
+            event.client.users_state[event.chat_id].championship_selected)[0]
+        match event.data:
+            case b"_menu_enable_single_notification":
+                teams = db.crud.get_teams_by_championship(campionato.id)
+                # Arrange buttons in multiple rows (e.g., 2 per row)
+                row_size = 1
+                buttons = [
+                    [Button.inline(team.name) for team in teams[i:i+row_size]]
+                    for i in range(0, len(teams), row_size)
+                ]
+                await event.edit("Seleziona squadra", buttons=buttons)
+            case b"_menu_enable_championship_notification":
+                if not event.chat.username in [u.username for u in db.crud.get_users()]:
+                    db.crud.create_user(
+                        id=event.chat_id, username=event.chat.username)
+                    logging.info(
+                        f"Created User {event.chat.username} and registered for {campionato.name}")
+                db.crud.update_user(
+                    event.chat_id, **{"tracked_championship": campionato.id})
+                logging.info(
+                    f"Updated {event.chat.username} to track championship {campionato.name}")
+                await event.edit("✅ Notifiche per il campionato abilitate! Riceverai aggiornamenti sulle partite.")
+
+            case b"_menu_get_team_info":
+                info = MainMenu.team_stats(event)
+                await event.edit(info)
+            case b"_menu_campionship_rankings":
+                await event.edit(
+                    "Quale classifica vuoi vedere?",
+                    buttons=[
+                        [
+                            Button.inline("Girone", b"_menu_ranking_girone"),
+                            Button.inline("Avulsa", b"_menu_ranking_avulsa"),
+                        ]
+                    ],
+                )
+            case b"_menu_ranking_girone":
+                await MainMenu.ranking(event, local=True)
+            case b"_menu_ranking_avulsa":
+                await MainMenu.ranking(event, local=False)
+            case _:
+                await event.edit("Comando non riconosciuto.")
+
+    @events.register(events.NewMessage(pattern="/start"))
+    async def handle(event: events.newmessage.NewMessage):
+        bot = event.client
+        # retrieve championships from db
+        championships = db.crud.get_all_championships()
+        bot.users_state[event.chat_id] = UserState(
+            state=UserStateEnum.CHOOSING_CHAMPIONSHIP)
+        await bot.send_message(
+            event.chat,
+            message="Attualmente solo FIPAV Modena è supportata.\nScegli un campionato:",
+            buttons=[
+                *[
+                    Button.inline(
+                        championship.name, f"_championship_choice_{championship.name}".encode())
+                    for championship in championships
+                ]
             ],
         )
