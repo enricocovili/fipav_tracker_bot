@@ -32,9 +32,9 @@ class MatchesRankingsScraper(BaseScraper):
         4: "time",
         5: "home_team",
         6: "away_team",
-        7: None,         # Skip
+        7: None,  # Skip
         8: "result",
-        9: None          # Skip
+        9: None,  # Skip
     }
 
     def get_matches(self, url: str) -> list[dict]:
@@ -43,7 +43,7 @@ class MatchesRankingsScraper(BaseScraper):
         soup = bs4.BeautifulSoup(res.text, "html.parser")
         matches = []
         for match in soup.select("table")[1].select("tr"):
-            if "dispari" not in match.get("class", []) and not "pari" in match.get(
+            if "dispari" not in match.get("class", []) and "pari" not in match.get(
                 "class", []
             ):
                 continue
@@ -56,11 +56,10 @@ class MatchesRankingsScraper(BaseScraper):
                 if idx == 0:
                     partial_link = col.find("a").get("href", None)
                     if partial_link:
-                        match[field] = "/".join(url.split("/")
-                                                [:3]) + "/" + partial_link
+                        match[field] = "/".join(url.split("/")[:3]) + "/" + partial_link
                 elif field:
                     match[field] = col.getText()
-            match['result'] = match['result'][0:5]
+            match["result"] = match["result"][0:5]
             matches.append(match)
         return matches
 

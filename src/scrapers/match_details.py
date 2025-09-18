@@ -1,4 +1,3 @@
-
 import bs4
 from scrapers.base_scraper import BaseScraper
 
@@ -9,7 +8,6 @@ from scrapers.base_scraper import BaseScraper
 
 
 class InfoMatchScraper(BaseScraper):
-
     def get_details(self, url: str) -> dict:
         info = {}
         res = self.session.get(url)

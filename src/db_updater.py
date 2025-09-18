@@ -17,8 +17,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(log_formatter)
 
-logging.basicConfig(level=logging.DEBUG, handlers=[
-                    file_handler, console_handler])
+logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
 
 
 class DbUpdater:
@@ -29,14 +28,18 @@ class DbUpdater:
 
     def _populate_teams_matches(self, championship) -> None:
         for data in self.match_scraper.load_teams(championship.url):
-            data['championship_id'] = str(championship.id)
-            try:
-                _team = db.crud.create_team(data.get('name'))
-                _standing = db.crud.create_standing(_team.id, championship.id)
-            except sqlalchemy.exc.IntegrityError as e:
-                logging.debug(
-                    f"Not adding team {data.get('name')} as it\'s already existent")
+            data["championship_id"] = str(championship.id)
+            if data["name"] in [
+                standing.team.name
+                for standing in db.crud.get_standings_in_championship(
+                    championship_id=championship.id
+                )
+            ]:
+                logging.debug(f"Skipping {data['name']} as already present in db")
                 continue
+
+            _team = db.crud.create_team(data.get("name"))
+            _standing = db.crud.create_standing(_team.id, championship.id)
             logging.debug(f"adding {data.get('name', 'None')} to db")
 
             if _standing != db.crud.update_standing(_standing.id, **data):
@@ -45,32 +48,34 @@ class DbUpdater:
         for match in self.match_scraper.get_matches(championship.url):
             try:
                 # flip day - year position to match db yyyy-mm-dd
-                match['match_date'] = "/".join(
-                    reversed(match['match_date'].split("/")))
+                match["match_date"] = "/".join(reversed(match["match_date"].split("/")))
                 match_timestamp = f"{match.get('match_date')} {match.get('time'):00}"
 
                 # retrieve matches info
-                home_team_id = db.crud.get_team_by_name(
-                    match.get('home_team'))[0].id
-                away_team_id = db.crud.get_team_by_name(
-                    match.get('away_team'))[0].id
+                home_team_id = db.crud.get_team_by_name(match.get("home_team"))[0].id
+                away_team_id = db.crud.get_team_by_name(match.get("away_team"))[0].id
 
                 _match = db.crud.create_match(
                     championship_id=championship.id,
                     match_date=match_timestamp,
                     home_team_id=home_team_id,
                     away_team_id=away_team_id,
-                    weekday=match.get('week_day'),
-                    result=match.get('result')
+                    weekday=match.get("week_day"),
+                    result=match.get("result"),
                 )
 
-                details = self.details_scraper.get_details(
-                    match.get("info_link"))
+                details = self.details_scraper.get_details(match.get("info_link"))
 
-                db.crud.update_match(_match.id, **{'city': details.get(
-                    'Citta'), 'address': details.get('Indirizzo'), 'maps_url': details.get('maps_url')})
+                db.crud.update_match(
+                    _match.id,
+                    **{
+                        "city": details.get("Citta"),
+                        "address": details.get("Indirizzo"),
+                        "maps_url": details.get("maps_url"),
+                    },
+                )
 
-            except sqlalchemy.exc.IntegrityError as e:
+            except sqlalchemy.exc.IntegrityError:
                 logging.debug("skipping match as already present in db")
                 continue
 

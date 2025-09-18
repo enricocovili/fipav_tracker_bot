@@ -15,13 +15,13 @@ class Championship(Base):
     end_year = Column(Integer, nullable=False)
 
     matches = relationship(
-        "Match", back_populates="championship", cascade="all, delete-orphan")
-    standings = relationship(
-        "Standing", back_populates="championship", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        UniqueConstraint("name", "group_name", "start_year", "end_year"),
+        "Match", back_populates="championship", cascade="all, delete-orphan"
     )
+    standings = relationship(
+        "Standing", back_populates="championship", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (UniqueConstraint("name", "group_name", "start_year", "end_year"),)
 
 
 class Team(Base):
@@ -31,12 +31,14 @@ class Team(Base):
     name = Column(String(100), nullable=False)
 
     home_matches = relationship(
-        "Match", foreign_keys="Match.home_team_id", back_populates="home_team")
+        "Match", foreign_keys="Match.home_team_id", back_populates="home_team"
+    )
     away_matches = relationship(
-        "Match", foreign_keys="Match.away_team_id", back_populates="away_team")
+        "Match", foreign_keys="Match.away_team_id", back_populates="away_team"
+    )
     standings = relationship(
-        "Standing", back_populates="team", cascade="all, delete-orphan")
-    
+        "Standing", back_populates="team", cascade="all, delete-orphan"
+    )
 
 
 class Match(Base):
@@ -68,8 +70,9 @@ class Match(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("championship_id", "match_date",
-                         "home_team_id", "away_team_id"),
+        UniqueConstraint(
+            "championship_id", "match_date", "home_team_id", "away_team_id"
+        ),
     )
 
 
@@ -77,10 +80,12 @@ class Standing(Base):
     __tablename__ = "standings"
 
     id = Column(Integer, primary_key=True)
-    championship_id = Column(Integer, ForeignKey(
-        "championships.id", ondelete="CASCADE"), nullable=False)
-    team_id = Column(Integer, ForeignKey(
-        "teams.id", ondelete="CASCADE"), nullable=False)
+    championship_id = Column(
+        Integer, ForeignKey("championships.id", ondelete="CASCADE"), nullable=False
+    )
+    team_id = Column(
+        Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False
+    )
     rank = Column(Integer, default=0)
     points = Column(Integer, default=0)
     matches_won = Column(Integer, default=0)
@@ -121,6 +126,5 @@ class User(Base):
         nullable=True,
     )
 
-    championship = relationship(
-        "Championship", foreign_keys=[tracked_championship])
+    championship = relationship("Championship", foreign_keys=[tracked_championship])
     team = relationship("Team", foreign_keys=[tracked_team])

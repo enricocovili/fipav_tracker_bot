@@ -16,8 +16,9 @@ DATABASE_URL = (
 )
 
 engine = create_engine(DATABASE_URL, echo=False, future=True)
-SessionLocal = scoped_session(sessionmaker(
-    bind=engine, autoflush=False, autocommit=False))
+SessionLocal = scoped_session(
+    sessionmaker(bind=engine, autoflush=False, autocommit=False)
+)
 
 
 @contextmanager
@@ -31,21 +32,24 @@ def get_session():
         session.rollback()
         raise
     # finally:
-        # session.close()
+    # session.close()
 
 
 def with_session(func):
     """Decorator to provide a session to the function."""
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         with get_session() as db:
             return func(db, *args, **kwargs)
+
     return wrapper
 
 
 # -------------------
 # Championships
 # -------------------
+
 
 @with_session
 def create_championship(db, name, url, season, group=None):
@@ -95,6 +99,7 @@ def delete_championship(db, ch_id):
 # Teams
 # -------------------
 
+
 @with_session
 def create_team(db, name):
     team = Team(name=name)
@@ -116,9 +121,12 @@ def get_team_by_name(db, team_name):
 
 @with_session
 def get_teams_by_championship(db, championship_id):
-    return db.query(Team).join(Standing, Team.id == Standing.team_id).filter(
-        Standing.championship_id == championship_id
-    ).all()
+    return (
+        db.query(Team)
+        .join(Standing, Team.id == Standing.team_id)
+        .filter(Standing.championship_id == championship_id)
+        .all()
+    )
 
 
 @with_session
@@ -132,8 +140,19 @@ def delete_team(db, team_id):
 # Matches
 # -------------------
 
+
 @with_session
-def create_match(db, championship_id, match_date, home_team_id, away_team_id, result, weekday=None, city=None, address=None):
+def create_match(
+    db,
+    championship_id,
+    match_date,
+    home_team_id,
+    away_team_id,
+    result,
+    weekday=None,
+    city=None,
+    address=None,
+):
     match = Match(
         championship_id=championship_id,
         match_date=match_date,
@@ -162,9 +181,11 @@ def get_matches_by_championship(db, championship_id):
 
 @with_session
 def get_matches_for_team(db, team_id):
-    return db.query(Match).filter(
-        (Match.home_team_id == team_id) | (Match.away_team_id == team_id)
-    ).all()
+    return (
+        db.query(Match)
+        .filter((Match.home_team_id == team_id) | (Match.away_team_id == team_id))
+        .all()
+    )
 
 
 @with_session
@@ -190,6 +211,7 @@ def delete_match(db, match_id):
 # Standings
 # -------------------
 
+
 @with_session
 def create_standing(db, team_id, championship_id):
     standing = Standing(championship_id=championship_id, team_id=team_id)
@@ -205,14 +227,23 @@ def get_standing_by_id(db, standing_id):
 
 
 @with_session
-def get_standings_in_championship(db, championship_id, sorted=True):
-    q = db.query(Standing).filter_by(championship_id=championship_id)
+def get_standings_in_championship(
+    db, championship_id: int = None, championship_name: str = "", sorted=True
+):
+    if championship_id:
+        q = db.query(Standing).filter_by(championship_id=championship_id)
+    else:
+        q = (
+            db.query(Standing)
+            .filter_by(championship_name=championship_name)
+            .distinct(Standing.team_id)
+        )
     if sorted:
         q = q.order_by(
             Standing.points.desc(),
             Standing.matches_won.desc(),
             (Standing.sets_won / Standing.sets_lost).desc(),
-            (Standing.points_scored / Standing.points_conceded).desc()
+            (Standing.points_scored / Standing.points_conceded).desc(),
         )
     return q.all()
 
@@ -240,8 +271,15 @@ def delete_standing(db, standing_id):
 # Users
 # -------------------
 
+
 @with_session
-def create_user(db: Session, id: int, username: str, tracked_championship: int = None, tracked_team: int = None):
+def create_user(
+    db: Session,
+    id: int,
+    username: str,
+    tracked_championship: int = None,
+    tracked_team: int = None,
+):
     user = User(
         id=id,
         username=username,
@@ -299,11 +337,15 @@ def get_table(db, championship_id):
     for t in teams:
         set_ratio = t.sets_won / t.sets_lost if t.sets_lost else None
         point_ratio = t.points_scored / t.points_conceded if t.points_conceded else None
-        results.append({
-            **t.__dict__,
-            "set_ratio": set_ratio,
-            "point_ratio": point_ratio,
-        })
-    results.sort(key=lambda x: (
-        x["points"], x["set_ratio"] or 0, x["point_ratio"] or 0), reverse=True)
+        results.append(
+            {
+                **t.__dict__,
+                "set_ratio": set_ratio,
+                "point_ratio": point_ratio,
+            }
+        )
+    results.sort(
+        key=lambda x: (x["points"], x["set_ratio"] or 0, x["point_ratio"] or 0),
+        reverse=True,
+    )
     return results

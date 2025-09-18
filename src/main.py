@@ -2,7 +2,6 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from telethon.sync import TelegramClient
-from telethon import events
 import logging
 
 import handlers.menu
@@ -20,8 +19,7 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
 
-logging.basicConfig(level=logging.DEBUG, handlers=[
-                    file_handler, console_handler])
+logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
 
 load_dotenv()
 
