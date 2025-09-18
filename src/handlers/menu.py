@@ -1,41 +1,54 @@
 from telethon import events, Button
 import logging
 import pandas as pd
-import json
 import handlers.base_handler as base_handler
 import scrapers.matches_rankings as scraper
 import db.crud
 from db.user_state import UserState, UserStateEnum
+from db.models import Standing
 
 
 class MainMenu(base_handler.BaseHandler):
-    def create_tables(teams_data, image: bool = False, local: bool = True):
+    def create_tables(standings: list[Standing], image: bool = False):
+        pass
         data = {
-            "#": [
-                team.local_rank if local else team.global_rank for team in teams_data
-            ],
-            "Nome": [team.name for team in teams_data],
-            "# Girone": [team.local_rank for team in teams_data],
-            "Punti": [team.points for team in teams_data],
-            " G ": [team.played for team in teams_data],
-            " V ": [team.won for team in teams_data],
-            " P ": [team.lost for team in teams_data],
-            "P/G": [round(team.points / team.played, 3) for team in teams_data],
-            "QS": [team.set_ratio for team in teams_data],
-            "QP": [team.points_ratio for team in teams_data],
+            "#": [],
+            "Nome": [],
+            "# Girone": [],
+            "Punti": [],
+            " G ": [],
+            " V ": [],
+            " P ": [],
+            "P/G": [],
+            "QS": [],
+            "QP": [],
         }
-        if local:
-            scale_factor = 3.5
-            data.pop("# Girone")
-            data.pop("P/G")
-        else:
-            scale_factor = 1.75
-            data.pop(" G ")
-            data.pop(" V ")
-            data.pop(" P ")
+        for standing in standings:
+            data["#"].append(standing.rank)
+            data["Nome"].append(standing.team.name)
+            data["# Girone"].append(standing.rank)
+            data["Punti"].append(standing.points)
+            data[" G "].append(standing.matches_won + standing.matches_lost)
+            data[" V "].append(standing.matches_won)
+            data[" P "].append(standing.matches_lost)
+            data["P/G"].append(round(standing.points /
+                               (standing.matches_won + standing.matches_lost), 3))
+            data["QS"].append(standing.sets_won / standing.sets_lost)
+            data["QP"].append(standing.points_scored /
+                              standing.points_conceded)
         df = pd.DataFrame(data)
         if image:
             import matplotlib.pyplot as plt
+
+            if len(standings) < 12:    # bigger font
+                scale_factor = 3.5
+                data.pop("# Girone")
+                data.pop("P/G")
+            else:
+                scale_factor = 1.75     # smaller font
+                data.pop(" G ")
+                data.pop(" V ")
+                data.pop(" P ")
 
             fig, ax = plt.subplots(
                 figsize=(10, 10), dpi=200
@@ -67,7 +80,7 @@ class MainMenu(base_handler.BaseHandler):
             table.scale(1, scale_factor)  # Add some padding to the table
 
             plt.savefig(
-                f"{'girone' if local else 'avulsa'}.png",
+                f"TODO_rename.png",
                 bbox_inches="tight",
                 pad_inches=0.1,
             )
@@ -76,33 +89,16 @@ class MainMenu(base_handler.BaseHandler):
 
     async def ranking(event: events.newmessage.NewMessage.Event, local: bool):
         logging.info(f"received: ranking: {'girone' if local else 'avulsa'}")
-        loading_msg = await event.client.send_message(event.chat, "Loading...")
-        teams = Artiglio.get_full_ranks(local)
-        # open teams.json and check if the teams are the same as the ones in the ranking
-        json_team_data = [team.to_json() for team in teams]
-        reuse_table = False
-        try:
-            with open("teams.json", "r") as f:
-                old_teams = json.load(f)
-
-                # check if the new teams are a subset of the old ones
-                test = [team in old_teams for team in json_team_data]
-                if all(test):
-                    logging.info("reusing old table")
-                    reuse_table = True
-        except FileNotFoundError:
-            pass
-        if not reuse_table:
-            logging.info("creating new table")
-            with open("teams.json", "w") as f:
-                json.dump(json_team_data, f, indent=4)
-            # hardcode the image for now
-            Artiglio.create_tables(teams, image=True, local=local)
+        user_state = event.client.users_state[event.chat_id]
+        loading_msg = await event.edit("Loading...")
+        standings = db.crud.get_standings_in_championship(
+            championship_id=db.crud.get_championships_by_name(user_state.championship_selected)[0].id)
+        MainMenu.create_tables(standings, image=True)
         await loading_msg.delete()
         await event.client.send_file(
             event.chat,
-            f"{'girone' if local else 'avulsa'}.png",
-            caption=f"Classifica {'Girone' if local else 'Avulsa'}",
+            f"TODO_rename.png",
+            caption=f"Classifica",
         )
 
     def team_stats(event: events.newmessage.NewMessage.Event):
@@ -156,9 +152,8 @@ class MainMenu(base_handler.BaseHandler):
         return output
 
     async def user_choice(event: events.newmessage.NewMessage.Event):
-        await event.client.send_message(
-            event.chat,
-            message=f"SELEZIONE:{event.client.users_state[event.chat_id].championship_selected}\nCosa vuoi fare?",
+        await event.edit(
+            f"SELEZIONE:{event.client.users_state[event.chat_id].championship_selected}\nCosa vuoi fare?",
             buttons=[
                 [
                     Button.inline(
@@ -172,13 +167,13 @@ class MainMenu(base_handler.BaseHandler):
                 ],
                 [
                     Button.inline(
-                        "ℹ️ Informazioni su una squadra",
+                        "🔍 Informazioni su una squadra",
                         b"_menu_get_team_info",
                     )
                 ],
                 [
                     Button.inline(
-                        "ℹ️ Classifica di un campionato",
+                        "🥇 Classifica",
                         b"_menu_campionship_rankings",
                     )
                 ]
@@ -191,7 +186,17 @@ class MainMenu(base_handler.BaseHandler):
             event.client.users_state[event.chat_id].championship_selected = event.data.decode(
             ).split("_")[-1]
             await MainMenu.user_choice(event)
-            await event.delete()
+            return
+
+        if event.data.decode().startswith("_team_choice_"):
+            team_id = event.data.decode().split("_")[-1]
+            team_name = db.crud.get_team_by_id(team_id=team_id).name
+            event.client.users_state[event.chat_id].team_selected = team_name
+            db.crud.update_user(user_id=event.chat_id, **
+                                {"tracked_team": team_id})
+            logging.info(
+                f"User {db.crud.get_user(user_id=event.chat_id).username} started tracking {team_name}")
+            await event.edit(f"✅ Notifiche abilitate per {team_name}")
             return
 
         campionato = db.crud.get_championships_by_name(
@@ -202,10 +207,12 @@ class MainMenu(base_handler.BaseHandler):
                 # Arrange buttons in multiple rows (e.g., 2 per row)
                 row_size = 1
                 buttons = [
-                    [Button.inline(team.name) for team in teams[i:i+row_size]]
+                    [Button.inline(team.name, f"_team_choice_{team.id}")
+                     for team in teams[i:i+row_size]]
                     for i in range(0, len(teams), row_size)
                 ]
                 await event.edit("Seleziona squadra", buttons=buttons)
+
             case b"_menu_enable_championship_notification":
                 if not event.chat.username in [u.username for u in db.crud.get_users()]:
                     db.crud.create_user(
@@ -221,6 +228,7 @@ class MainMenu(base_handler.BaseHandler):
             case b"_menu_get_team_info":
                 info = MainMenu.team_stats(event)
                 await event.edit(info)
+
             case b"_menu_campionship_rankings":
                 await event.edit(
                     "Quale classifica vuoi vedere?",
@@ -231,10 +239,13 @@ class MainMenu(base_handler.BaseHandler):
                         ]
                     ],
                 )
+
             case b"_menu_ranking_girone":
                 await MainMenu.ranking(event, local=True)
+
             case b"_menu_ranking_avulsa":
                 await MainMenu.ranking(event, local=False)
+
             case _:
                 await event.edit("Comando non riconosciuto.")
 

@@ -210,7 +210,7 @@ def get_standings_in_championship(db, championship_id, sorted=True):
     if sorted:
         q = q.order_by(
             Standing.points.desc(),
-            Standing.wins.desc(),
+            Standing.matches_won.desc(),
             (Standing.sets_won / Standing.sets_lost).desc(),
             (Standing.points_scored / Standing.points_conceded).desc()
         )
