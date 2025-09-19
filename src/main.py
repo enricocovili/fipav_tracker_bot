@@ -27,10 +27,10 @@ api_id = int(str(os.getenv("API_ID")))
 api_hash = str(os.getenv("API_HASH"))
 bot_token = str(os.getenv("BOT_TOKEN"))
 
+bot = TelegramClient("bot", api_id, api_hash)
+
 
 async def main():
-    bot = TelegramClient("bot", api_id, api_hash)
-
     bot.add_event_handler(handlers.menu.MainMenu.handle)
     bot.add_event_handler(handlers.menu.MainMenu.callback)
 
@@ -42,4 +42,5 @@ async def main():
     await bot.run_until_disconnected()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -3,6 +3,8 @@ import sqlalchemy.exc
 import scrapers.matches_rankings as rankings
 import scrapers.match_details as match_details
 import logging
+import main
+import random
 
 # Set up logging: DEBUG and up to file, INFO and up to console
 log_formatter = logging.Formatter(
@@ -87,15 +89,22 @@ class DbUpdater:
         """
         for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
+            if self.notify:
+                self.notify_subscribed_users(championship.id)
 
-    def notify_subscribed_users(self) -> None:
-        """
-        Notify users if a new result is dropped
-        """
-        pass
+    async def notify_subscribed_users(self, championship_id: int) -> None:
+        await main.bot.start(bot_token=main.bot_token)
+
+        for user in db.crud.get_users():
+            if user.tracked_championship == championship_id:
+                int_random = random.randint(0, 100)
+                if int_random == 69 or int_random == 88:
+                    text = "FU-FU-FU-FURRY, C'È UN AGGIORNAMENTO!"
+                else:
+                    text = "🍔 AGGIORNAMENTO JUST DROPPED 🍔"
+                main.bot.send_message(user.id, text)
 
 
 if __name__ == "__main__":
     scanner = DbUpdater()
     scanner.perform_scan()
-    scanner.notify_subscribed_users()

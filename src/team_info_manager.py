@@ -1,29 +1,31 @@
 import db.crud
+from db.models import Team, Championship, Standing
 
 
 class TeamInfoManager():
     @staticmethod
-    def team_stats(team_id: int, championship_id: int):
-        # TODO: insert here db crud operations
-        info_artiglio = [
-            team for team in teams if "artiglio" in team.name.lower()][0]
+    def team_stats(team: Team, championship: Championship) -> str:
+        standings = db.crud.get_standings_in_championship(
+            championship_id=championship.id)
+        standing = [
+            _standing for _standing in standings if _standing.team.id == team.id][0]
+        matches = [match for match in db.crud.get_matches_for_team(
+            team.id) if match.championship.id == championship.id]
 
-        last_match = scraper.Match("", "", "", "", "", "", "", "", "", "")
-        next_match = scraper.Match("", "", "", "", "", "", "", "", "", "")
-
-        for ix, match in enumerate(matches[:-1]):
-            if matches[ix + 1].result == "":
-                last_match = match
-                next_match = matches[ix + 1]
-                break
+        # data calculation
+        matches_played = standing.matches_won + standing.matches_lost
+        won_percentage = round(
+            standing.matches_won / (matches_played) * 100, 2)
 
         # Mobile friendly output
         output = f"""
-            Informazioni su **Artiglio**:
-            ⬤ **Rank Girone {info_artiglio.round}**: {info_artiglio.local_rank}
-            ⬤ **Rank Generale**: {info_artiglio.global_rank}
-            ⬤ **Punti**: {info_artiglio.points}
-            ⬤ **% Vittorie**: {round(info_artiglio.won / info_artiglio.played * 100, 2)}% ({info_artiglio.won}/{info_artiglio.played})
+            Informazioni su **{team.name}**:
+            ⬤ **Rank Girone {championship.group_name}**: {standing.rank}
+            ⬤ **Rank Avulsa**: Non funziona per ora {standing.rank}
+            ⬤ **Punti**: {standing.points}
+            ⬤ **% Vittorie**: {won_percentage}% ({standing.matches_won}/{matches_played})
+        """
+        """
             ⬤ **Prossima partita**:
                 {next_match.week_day + " " + next_match.date + " " + next_match.time}
                 vs {next_match.away_team if "artiglio" in next_match.home_team.lower() else next_match.home_team} 

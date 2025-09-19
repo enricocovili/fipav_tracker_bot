@@ -4,9 +4,14 @@ import handlers.base_handler as base_handler
 import db.crud
 from db.user_state import UserState
 from standing_manager import StandingManager
+from team_info_manager import TeamInfoManager
+from db.models import Championship
 
 
 class MainMenu(base_handler.BaseHandler):
+    back_to_menu_button = Button.inline("Torna al menu", b"_menu")
+    back_to_championship_button = Button.inline("Torna")
+
     async def send_standings(
         event: events.newmessage.NewMessage.Event, is_avulsa: bool
     ):
@@ -29,6 +34,22 @@ class MainMenu(base_handler.BaseHandler):
             caption="Classifica",
         )
 
+    async def team_selection(
+        event: events.newmessage.NewMessage.Event,
+        campionato: Championship,
+        event_type: str,
+    ):
+        teams = db.crud.get_teams_by_championship(campionato.id)
+        buttons = [
+            [
+                Button.inline(team.name, f"_team_choice_{team.id}_{event_type}")
+                for team in teams[i : i + 1]
+            ]
+            for i in range(0, len(teams))
+        ]
+        buttons.append([Button.inline("Torna al menu", data=b"_menu")])
+        await event.edit("Seleziona squadra", buttons=buttons)
+
     async def user_choice(event: events.newmessage.NewMessage.Event):
         await event.edit(
             f"SELEZIONE:{event.client.users_state[event.chat_id].championship_selected.name}\nCosa vuoi fare?",
@@ -36,7 +57,7 @@ class MainMenu(base_handler.BaseHandler):
                 [
                     Button.inline(
                         "🔔 Abilita notifiche per squadra singola",
-                        b"_menu_enable_single_notification",
+                        b"_menu_enable_team_notification",
                     )
                 ],
                 [
@@ -57,44 +78,53 @@ class MainMenu(base_handler.BaseHandler):
                         b"_menu_campionship_rankings",
                     )
                 ],
+                [Button.inline("Torna alla scelta campionato", b"_menu_start")],
             ],
         )
 
     @events.register(events.CallbackQuery)
     async def callback(event: events.newmessage.NewMessage.Event):
-        if event.data.decode().startswith("_championship_choice_"):
+        data: str = event.data.decode()
+
+        if data.startswith("_championship_choice_"):
             event.client.users_state[
                 event.chat_id
             ].championship_selected = db.crud.get_championship_by_id(
-                event.data.decode().split("_")[-1]
+                data.split("_")[-1]
             )
             await MainMenu.user_choice(event)
             return
 
-        if event.data.decode().startswith("_team_choice_"):
-            team_id = event.data.decode().split("_")[-1]
+        campionato = event.client.users_state[event.chat_id].championship_selected
+
+        if data.startswith("_team_choice_"):
+            team_id = int(data.split("_")[-2])
             team = db.crud.get_team_by_id(team_id=team_id)
-            event.client.users_state[event.chat_id].team_selected = team
-            db.crud.update_user(user_id=event.chat_id, **{"tracked_team": team_id})
-            logging.info(
-                f"User {db.crud.get_user(user_id=event.chat_id).username} started tracking {team.name}"
-            )
-            await event.edit(f"✅ Notifiche abilitate per {team.name}")
+            if data.endswith("_notification"):
+                event.client.users_state[event.chat_id].team_selected = team
+                db.crud.update_user(user_id=event.chat_id, **{"tracked_team": team_id})
+                logging.info(
+                    f"User {db.crud.get_user(user_id=event.chat_id).username} started tracking {team.name}"
+                )
+                await event.edit(
+                    f"✅ Notifiche abilitate per {team.name}",
+                    buttons=[MainMenu.back_to_menu_button],
+                )
+            elif data.endswith("_info"):
+                await event.edit(
+                    TeamInfoManager.team_stats(team, campionato),
+                    buttons=[MainMenu.back_to_menu_button],
+                )
+
             return
 
-        campionato = event.client.users_state[event.chat_id].championship_selected
         match event.data:
-            case b"_menu_enable_single_notification":
-                teams = db.crud.get_teams_by_championship(campionato.id)
-                buttons = [
-                    [
-                        Button.inline(team.name, f"_team_choice_{team.id}")
-                        for team in teams[i : i + 1]
-                    ]
-                    for i in range(0, len(teams))
-                ]
-                await event.edit("Seleziona squadra", buttons=buttons)
-
+            case b"_menu_start":
+                await MainMenu.handle(event)
+            case b"_menu":
+                await MainMenu.user_choice(event)
+            case b"_menu_enable_team_notification":
+                await MainMenu.team_selection(event, campionato, "notification")
             case b"_menu_enable_championship_notification":
                 if event.chat.username not in [u.username for u in db.crud.get_users()]:
                     db.crud.create_user(id=event.chat_id, username=event.chat.username)
@@ -108,12 +138,12 @@ class MainMenu(base_handler.BaseHandler):
                     f"Updated {event.chat.username} to track championship {campionato.name}"
                 )
                 await event.edit(
-                    "✅ Notifiche per il campionato abilitate! Riceverai aggiornamenti sulle partite."
+                    "✅ Notifiche per il campionato abilitate! Riceverai aggiornamenti sulle partite.",
+                    buttons=[MainMenu.back_to_menu_button],
                 )
 
             case b"_menu_get_team_info":
-                info = MainMenu.team_stats(event)
-                await event.edit(info)
+                await MainMenu.team_selection(event, campionato, "info")
 
             case b"_menu_campionship_rankings":
                 await event.edit(
@@ -122,7 +152,10 @@ class MainMenu(base_handler.BaseHandler):
                         [
                             Button.inline("Girone", b"_menu_ranking_girone"),
                             Button.inline("Avulsa", b"_menu_ranking_avulsa"),
-                        ]
+                        ],
+                        [
+                            MainMenu.back_to_menu_button,
+                        ],
                     ],
                 )
 
@@ -141,16 +174,23 @@ class MainMenu(base_handler.BaseHandler):
         # retrieve championships from db
         championships = db.crud.get_all_championships()
         bot.users_state[event.chat_id] = UserState()
-        await bot.send_message(
-            event.chat,
-            message="Attualmente solo FIPAV Modena è supportata.\nScegli un campionato:",
-            buttons=[
-                [
-                    Button.inline(
-                        f"{championship.name} - {championship.group_name}",
-                        f"_championship_choice_{championship.id}".encode(),
-                    )
-                ]
-                for championship in championships
-            ],
+        message_text = (
+            "Attualmente solo FIPAV Modena è supportata.\nScegli un campionato:"
         )
+        buttons = [
+            [
+                Button.inline(
+                    f"{championship.name} - {championship.group_name}",
+                    f"_championship_choice_{championship.id}".encode(),
+                )
+            ]
+            for championship in championships
+        ]
+        if hasattr(event.original_update, "data"):  # back to menu from a submenu
+            await event.edit(message_text, buttons=buttons)
+        else:  # plain new message (sent by a command)
+            await bot.send_message(
+                event.chat,
+                message=message_text,
+                buttons=buttons,
+            )

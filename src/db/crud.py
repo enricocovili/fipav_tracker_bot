@@ -298,7 +298,7 @@ def get_user(db: Session, user_id: int):
 
 
 @with_session
-def get_users(db: Session, skip: int = 0, limit: int = 100):
+def get_users(db: Session):
     return db.query(User).all()
 
 
