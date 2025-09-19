@@ -11,6 +11,7 @@ log_formatter = logging.Formatter(
     "%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
 )
 
+os.makedirs("logs", exist_ok=True)
 file_handler = logging.FileHandler("logs/bot.log")
 file_handler.setLevel(logging.INFO)
 file_handler.setFormatter(log_formatter)
@@ -19,7 +20,8 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
 
-logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
+logging.basicConfig(level=logging.DEBUG, handlers=[
+                    file_handler, console_handler])
 
 load_dotenv()
 
