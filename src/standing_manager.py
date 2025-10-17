@@ -1,9 +1,10 @@
 from db.models import Standing, Championship
 import db.crud
 import pandas as pd
+import os
 
 
-class StandingManager():
+class StandingManager:
     def __init__(self, championship: Championship, is_avulsa: bool = False):
         self.championship = championship
         self.is_avulsa = is_avulsa
@@ -12,13 +13,17 @@ class StandingManager():
     def get_standings(self) -> list[Standing]:
         if not self.is_avulsa:
             standings = db.crud.get_standings_in_championship(
-                championship_id=self.championship.id)  # only specific standings
+                championship_id=self.championship.id
+            )  # only specific standings
         else:
             total_championships = db.crud.get_championships_by_name(
-                self.championship.name)
+                self.championship.name
+            )
             standings = []
             for championship in total_championships:
-                for standing in db.crud.get_standings_in_championship(championship_id=championship.id):
+                for standing in db.crud.get_standings_in_championship(
+                    championship_id=championship.id
+                ):
                     standings.append(standing)
         return standings
 
@@ -43,18 +48,22 @@ class StandingManager():
             data[" G "].append(standing.matches_won + standing.matches_lost)
             data[" V "].append(standing.matches_won)
             data[" P "].append(standing.matches_lost)
-            data["P/G"].append(round(standing.points /
-                               (standing.matches_won + standing.matches_lost), 3))
+            data["P/G"].append(
+                round(
+                    standing.points / (standing.matches_won + standing.matches_lost), 3
+                )
+            )
             data["QS"].append(round(standing.sets_won / standing.sets_lost, 3))
-            data["QP"].append(round(standing.points_scored /
-                              standing.points_conceded, 3))
+            data["QP"].append(
+                round(standing.points_scored / standing.points_conceded, 3)
+            )
 
-        if not self.is_avulsa:    # bigger font
+        if not self.is_avulsa:  # bigger font
             scale_factor = 3.5
             data.pop("# Girone")
             data.pop("P/G")
         else:
-            scale_factor = 1.75     # smaller font
+            scale_factor = 1.75  # smaller font
             data.pop(" G ")
             data.pop(" V ")
             data.pop(" P ")
@@ -96,6 +105,8 @@ class StandingManager():
                 filename = f"tables_imgs/{self.championship.id}_{self.championship.group_name}.png"
             else:
                 filename = f"tables_imgs/{self.championship.name}.png"
+
+            os.makedirs("tables_imgs", exist_ok=True)
 
             plt.savefig(
                 filename,

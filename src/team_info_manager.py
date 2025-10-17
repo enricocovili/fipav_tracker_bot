@@ -2,20 +2,24 @@ import db.crud
 from db.models import Team, Championship, Standing
 
 
-class TeamInfoManager():
+class TeamInfoManager:
     @staticmethod
     def team_stats(team: Team, championship: Championship) -> str:
         standings = db.crud.get_standings_in_championship(
-            championship_id=championship.id)
+            championship_id=championship.id
+        )
         standing = [
-            _standing for _standing in standings if _standing.team.id == team.id][0]
-        matches = [match for match in db.crud.get_matches_for_team(
-            team.id) if match.championship.id == championship.id]
+            _standing for _standing in standings if _standing.team.id == team.id
+        ][0]
+        matches = [
+            match
+            for match in db.crud.get_matches_for_team(team.id)
+            if match.championship.id == championship.id
+        ]
 
         # data calculation
         matches_played = standing.matches_won + standing.matches_lost
-        won_percentage = round(
-            standing.matches_won / (matches_played) * 100, 2)
+        won_percentage = round(standing.matches_won / (matches_played) * 100, 2)
 
         # Mobile friendly output
         output = f"""
