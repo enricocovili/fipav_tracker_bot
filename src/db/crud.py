@@ -3,6 +3,7 @@ import math
 from functools import wraps
 from contextlib import contextmanager
 from sqlalchemy import create_engine
+from sqlalchemy import case
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 
 from db.models import Championship, Team, Match, Standing, User
@@ -240,16 +241,20 @@ def get_standings_in_championship(
             .distinct(Standing.team_id)
         )
     if sorted:
-        sets_lost = math.inf if Standing.sets_lost == 0 else Standing.sets_lost
-        points_conceded = (
-            math.inf if Standing.points_conceded == 0 else Standing.points_conceded
+        set_ratio = case(
+            (Standing.sets_lost == 0, math.inf),
+            else_=Standing.sets_won / Standing.sets_lost,
+        )
+        point_ratio = case(
+            (Standing.points_conceded == 0, math.inf),
+            else_=Standing.points_scored / Standing.points_conceded,
         )
 
         q = q.order_by(
             Standing.points.desc(),
             Standing.matches_won.desc(),
-            (Standing.sets_won / sets_lost).desc(),
-            (Standing.points_scored / points_conceded).desc(),
+            set_ratio.desc(),
+            point_ratio.desc(),
         )
     return q.all()
 

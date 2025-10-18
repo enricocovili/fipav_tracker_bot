@@ -19,7 +19,11 @@ class TeamInfoManager:
 
         # data calculation
         matches_played = standing.matches_won + standing.matches_lost
-        won_percentage = round(standing.matches_won / (matches_played) * 100, 2)
+        won_percentage = (
+            round(standing.matches_won / (matches_played) * 100, 2)
+            if matches_played > 0
+            else 0
+        )
 
         # Mobile friendly output
         output = f"""
@@ -32,7 +36,7 @@ class TeamInfoManager:
         """
             ⬤ **Prossima partita**:
                 {next_match.week_day + " " + next_match.date + " " + next_match.time}
-                vs {next_match.away_team if "artiglio" in next_match.home_team.lower() else next_match.home_team} 
+                vs {next_match.away_team if "artiglio" in next_match.home_team.lower() else next_match.home_team}
                 ({"casa" if "artiglio" in next_match.home_team.lower() else "ospiti"})
             ⬤ **Ultima partita**:
                 {last_match.week_day + " " + last_match.date + " " + last_match.time}

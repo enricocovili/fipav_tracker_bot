@@ -48,14 +48,19 @@ class StandingManager:
             data[" G "].append(standing.matches_won + standing.matches_lost)
             data[" V "].append(standing.matches_won)
             data[" P "].append(standing.matches_lost)
+            total_matches = standing.matches_won + standing.matches_lost
             data["P/G"].append(
-                round(
-                    standing.points / (standing.matches_won + standing.matches_lost), 3
-                )
+                round(standing.points / total_matches, 3) if total_matches > 0 else 0
             )
-            data["QS"].append(round(standing.sets_won / standing.sets_lost, 3))
+            data["QS"].append(
+                round(standing.sets_won / standing.sets_lost, 3)
+                if standing.sets_lost > 0
+                else 0
+            )
             data["QP"].append(
                 round(standing.points_scored / standing.points_conceded, 3)
+                if standing.points_conceded > 0
+                else 0
             )
 
         if not self.is_avulsa:  # bigger font
