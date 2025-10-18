@@ -102,6 +102,9 @@ class MainMenu(base_handler.BaseHandler):
             team = db.crud.get_team_by_id(team_id=team_id)
             if data.endswith("_notification"):
                 event.client.users_state[event.chat_id].team_selected = team
+                if event.chat.username not in [u.username for u in db.crud.get_users()]:
+                    db.crud.create_user(id=event.chat_id, username=event.chat.username)
+                    logging.info(f"Created User {event.chat.username}")
                 db.crud.update_user(user_id=event.chat_id, **{"tracked_team": team_id})
                 logging.info(
                     f"User {db.crud.get_user(user_id=event.chat_id).username} started tracking {team.name}"
