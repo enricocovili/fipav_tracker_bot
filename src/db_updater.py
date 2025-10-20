@@ -1,33 +1,41 @@
 import db.crud
 import sqlalchemy.exc
+from telethon.sync import TelegramClient
 import scrapers.matches_rankings as rankings
 import scrapers.match_details as match_details
 import logging
-import main
 import random
 import os
 
-# Set up logging: DEBUG and up to file, INFO and up to console
-log_formatter = logging.Formatter(
-    "%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
-)
-
-os.makedirs("logs", exist_ok=True)
-file_handler = logging.FileHandler("logs/updater.log")
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(log_formatter)
-
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-console_handler.setFormatter(log_formatter)
-
-logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
-
 
 class DbUpdater:
-    def __init__(self) -> None:
+    def __init__(self, bot: TelegramClient) -> None:
         self.match_scraper = rankings.MatchesRankingsScraper()
         self.details_scraper = match_details.InfoMatchScraper()
+        self.bot = bot
+
+        self.db_logger = logging.getLogger("db_updater")
+
+        # Set up logging: DEBUG and up to file, INFO and up to console
+        log_formatter = logging.Formatter(
+            "%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S"
+        )
+
+        os.makedirs("logs", exist_ok=True)
+        file_handler = logging.FileHandler("logs/updater.log")
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(log_formatter)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(log_formatter)
+
+        self.db_logger.setLevel(logging.DEBUG)
+        self.db_logger.addHandler(file_handler)
+        self.db_logger.addHandler(console_handler)
+
+        self.db_logger.propagate = False  # prevents duplication to main log
+
         self.notify: bool = False
 
     def _populate_teams_matches(self, championship) -> None:
@@ -46,17 +54,19 @@ class DbUpdater:
                     if name:
                         existing_names.append(name)
             except ZeroDivisionError:
-                logging.warning(
+                self.db_logger.warning(
                     "Division by zero occurred while computing standings; skipping standings for %s",
                     championship.id,
                 )
             if data["name"] in existing_names:
-                logging.debug(f"Skipping {data['name']} as already present in db")
+                self.db_logger.debug(
+                    f"Skipping {data['name']} as already present in db"
+                )
                 continue
 
             _team = db.crud.create_team(data.get("name"))
             _standing = db.crud.create_standing(_team.id, championship.id)
-            logging.debug(f"adding {data.get('name', 'None')} to db")
+            self.db_logger.debug(f"adding {data.get('name', 'None')} to db")
 
             if _standing != db.crud.update_standing(_standing.id, **data):
                 self.notify = True
@@ -92,25 +102,25 @@ class DbUpdater:
                 )
 
             except sqlalchemy.exc.IntegrityError:
-                logging.debug("skipping match as already present in db")
+                self.db_logger.debug("skipping match as already present in db")
                 continue
 
-            logging.debug("created match")
+            self.db_logger.debug("created match")
 
     def perform_scan(self) -> None:
         """
         Perform a scan based on the selection provided by the database
         """
-        logging.info("Running FIPAV website scan")
+        self.db_logger.info("Running FIPAV website scan")
         for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
             if self.notify:
-                logging.info("Changed detected. Notifying users")
+                self.db_logger.info("Changed detected. Notifying users")
                 self.notify_subscribed_users(championship.id)
+            else:
+                self.db_logger.info("No changes detected")
 
     async def notify_subscribed_users(self, championship_id: int) -> None:
-        await main.bot.start(bot_token=main.bot_token)
-
         for user in db.crud.get_users():
             if user.tracked_championship == championship_id:
                 int_random = random.randint(0, 100)
@@ -118,7 +128,7 @@ class DbUpdater:
                     text = "FU-FU-FU-FURRY, C'È UN AGGIORNAMENTO!"
                 else:
                     text = "🍔 AGGIORNAMENTO JUST DROPPED 🍔"
-                main.bot.send_message(user.id, text)
+                self.bot.send_message(user.id, text)
 
 
 if __name__ == "__main__":

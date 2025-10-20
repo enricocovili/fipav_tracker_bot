@@ -2,6 +2,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from telethon.sync import TelegramClient
+from db_updater import DbUpdater
 import logging
 
 import handlers.menu
@@ -31,6 +32,18 @@ bot_token = str(os.getenv("BOT_TOKEN"))
 bot = TelegramClient("bot", api_id, api_hash)
 
 
+async def periodic_db_update():
+    """Periodically run database updater"""
+    db_updater = DbUpdater(bot=bot)
+    while True:
+        try:
+            logging.info("Running periodic database update")
+            db_updater.perform_scan()
+        except Exception as e:
+            logging.error(f"Error in periodic DB update: {e}")
+        await asyncio.sleep(3600)  # Run every hour
+
+
 async def main():
     bot.add_event_handler(handlers.menu.MainMenu.handle)
     bot.add_event_handler(handlers.menu.MainMenu.callback)
@@ -44,4 +57,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.create_task(periodic_db_update())
+    loop.run_until_complete(main())
