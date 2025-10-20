@@ -101,9 +101,11 @@ class DbUpdater:
         """
         Perform a scan based on the selection provided by the database
         """
+        logging.info("Running FIPAV website scan")
         for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
             if self.notify:
+                logging.info("Changed detected. Notifying users")
                 self.notify_subscribed_users(championship.id)
 
     async def notify_subscribed_users(self, championship_id: int) -> None:
