@@ -27,7 +27,7 @@ class DbUpdater:
         file_handler.setFormatter(log_formatter)
 
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.DEBUG)
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(log_formatter)
 
         self.db_logger.setLevel(logging.DEBUG)
@@ -58,28 +58,47 @@ class DbUpdater:
                     "Division by zero occurred while computing standings; skipping standings for %s",
                     championship.id,
                 )
-            if data["name"] in existing_names:
+            if data["name"] not in existing_names:
+                _team = db.crud.create_team(data.get("name"))
+                _standing = db.crud.create_standing(_team.id, championship.id)
+                db.crud.update_standing(_standing.id, **data)
                 self.db_logger.debug(
-                    f"Skipping {data['name']} as already present in db"
-                )
-                continue
-
-            _team = db.crud.create_team(data.get("name"))
-            _standing = db.crud.create_standing(_team.id, championship.id)
-            self.db_logger.debug(f"adding {data.get('name', 'None')} to db")
-
-            if _standing != db.crud.update_standing(_standing.id, **data):
+                    f"adding {data.get('name', 'None')} to db")
                 self.notify = True
+            else:
+                # check if any data changed
+                standing = db.crud.get_standings_in_championship(
+                    championship_id=championship.id
+                )
+                for s in standing:
+                    if s.team.name != data["name"]:
+                        continue
+                    for k, v in data.items():
+                        try:
+                            db_val = getattr(s, k)
+                        except AttributeError:
+                            continue
+                        if str(db_val) != str(v):
+                            db.crud.update_standing(s.id, **data)
+                            self.db_logger.debug(
+                                f"updating {data.get('name', 'None')} in db")
+                            self.notify = True
+                            break
 
         for match in self.match_scraper.get_matches(championship.url):
             try:
+                if match.get("result") == "":
+                    continue  # skip not played matches
                 # flip day - year position to match db yyyy-mm-dd
-                match["match_date"] = "/".join(reversed(match["match_date"].split("/")))
+                match["match_date"] = "/".join(
+                    reversed(match["match_date"].split("/")))
                 match_timestamp = f"{match.get('match_date')} {match.get('time'):00}"
 
                 # retrieve matches info
-                home_team_id = db.crud.get_team_by_name(match.get("home_team"))[0].id
-                away_team_id = db.crud.get_team_by_name(match.get("away_team"))[0].id
+                home_team_id = db.crud.get_team_by_name(
+                    match.get("home_team"))[0].id
+                away_team_id = db.crud.get_team_by_name(
+                    match.get("away_team"))[0].id
 
                 _match = db.crud.create_match(
                     championship_id=championship.id,
@@ -90,7 +109,8 @@ class DbUpdater:
                     result=match.get("result"),
                 )
 
-                details = self.details_scraper.get_details(match.get("info_link"))
+                details = self.details_scraper.get_details(
+                    match.get("info_link"))
 
                 db.crud.update_match(
                     _match.id,
@@ -107,7 +127,7 @@ class DbUpdater:
 
             self.db_logger.debug("created match")
 
-    def perform_scan(self) -> None:
+    async def perform_scan(self) -> None:
         """
         Perform a scan based on the selection provided by the database
         """
@@ -115,20 +135,28 @@ class DbUpdater:
         for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
             if self.notify:
-                self.db_logger.info("Changed detected. Notifying users")
-                self.notify_subscribed_users(championship.id)
+                await self.notify_users(championship.id)
+                self.notify = False
             else:
-                self.db_logger.info("No changes detected")
+                self.db_logger.info(
+                    f"No updates for championship {championship.name} - {championship.group_name}")
 
-    async def notify_subscribed_users(self, championship_id: int) -> None:
-        for user in db.crud.get_users():
-            if user.tracked_championship == championship_id:
-                int_random = random.randint(0, 100)
-                if int_random == 69 or int_random == 88:
-                    text = "FU-FU-FU-FURRY, C'È UN AGGIORNAMENTO!"
-                else:
-                    text = "🍔 AGGIORNAMENTO JUST DROPPED 🍔"
-                self.bot.send_message(user.id, text)
+    async def notify_users(self, championship_id) -> None:
+        """Notify users about database changes"""
+        users = db.crud.get_users()
+        for user in users:
+            if user.tracked_championship != championship_id:
+                continue
+            try:
+                await self.bot.send_message(
+                    entity=user.id,
+                    message="🔔 Aggiornamenti disponibili per il campionato che stai seguendo!",
+                )
+                self.db_logger.info(
+                    f"Notified user {user.username} about updates")
+            except Exception as e:
+                self.db_logger.error(
+                    f"Failed to notify user {user.username}: {e}")
 
 
 if __name__ == "__main__":

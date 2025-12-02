@@ -9,6 +9,7 @@ class StandingManager:
         self.championship = championship
         self.is_avulsa = is_avulsa
         self.standings: list[Standing] = self.get_standings()
+        self.sort_standings()
 
     def get_standings(self) -> list[Standing]:
         if not self.is_avulsa:
@@ -27,6 +28,17 @@ class StandingManager:
                     standings.append(standing)
         return standings
 
+    def sort_standings(self) -> None:
+        self.standings.sort(
+            key=lambda s: (
+                -s.points,
+                -(s.matches_won + s.matches_lost),
+                -s.sets_won / (s.sets_lost if s.sets_lost > 0 else 1),
+                -s.points_scored /
+                (s.points_conceded if s.points_conceded > 0 else 1)
+            )
+        )
+
     def create_table(self, image: bool = False) -> str:
         data = {
             "#": [],
@@ -40,8 +52,8 @@ class StandingManager:
             "QS": [],
             "QP": [],
         }
-        for standing in self.standings:
-            data["#"].append(standing.rank)
+        for index, standing in enumerate(self.standings):
+            data["#"].append(index + 1)
             data["Nome"].append(standing.team.name)
             data["# Girone"].append(standing.rank)
             data["Punti"].append(standing.points)
@@ -50,7 +62,8 @@ class StandingManager:
             data[" P "].append(standing.matches_lost)
             total_matches = standing.matches_won + standing.matches_lost
             data["P/G"].append(
-                round(standing.points / total_matches, 3) if total_matches > 0 else 0
+                round(standing.points / total_matches,
+                      3) if total_matches > 0 else 0
             )
             data["QS"].append(
                 round(standing.sets_won / standing.sets_lost, 3)

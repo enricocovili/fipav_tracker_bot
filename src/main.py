@@ -21,7 +21,8 @@ console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
 
-logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, console_handler])
+logging.basicConfig(level=logging.DEBUG, handlers=[
+                    file_handler, console_handler])
 
 load_dotenv()
 
@@ -37,8 +38,10 @@ async def periodic_db_update():
     db_updater = DbUpdater(bot=bot)
     while True:
         try:
+            while not bot.is_connected():
+                await asyncio.sleep(1)
             logging.info("Running periodic database update")
-            db_updater.perform_scan()
+            await db_updater.perform_scan()
         except Exception as e:
             logging.error(f"Error in periodic DB update: {e}")
         await asyncio.sleep(3600)  # Run every hour
