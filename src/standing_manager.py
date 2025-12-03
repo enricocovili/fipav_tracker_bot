@@ -31,6 +31,7 @@ class StandingManager:
     def sort_standings(self) -> None:
         self.standings.sort(
             key=lambda s: (
+                s.rank,
                 -s.points,
                 -(s.matches_won + s.matches_lost),
                 -s.sets_won / (s.sets_lost if s.sets_lost > 0 else 1),
