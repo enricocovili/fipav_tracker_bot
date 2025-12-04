@@ -49,7 +49,7 @@ class StandingManager:
             " G ": [],
             " V ": [],
             " P ": [],
-            "P/G": [],
+            "Punti %": [],
             "QS": [],
             "QP": [],
         }
@@ -62,9 +62,9 @@ class StandingManager:
             data[" V "].append(standing.matches_won)
             data[" P "].append(standing.matches_lost)
             total_matches = standing.matches_won + standing.matches_lost
-            data["P/G"].append(
-                round(standing.points / total_matches,
-                      3) if total_matches > 0 else 0
+            data["Punti %"].append(
+                round((standing.points / (total_matches*3))
+                      * 100, 3) if total_matches > 0 else 0
             )
             data["QS"].append(
                 round(standing.sets_won / standing.sets_lost, 3)
@@ -77,10 +77,10 @@ class StandingManager:
                 else 0
             )
 
-        if not self.is_avulsa:  # bigger font
-            scale_factor = 3.5
+        if not self.is_avulsa:
+            scale_factor = 3.5  # bigger font
             data.pop("# Girone")
-            data.pop("P/G")
+            data.pop("Punti %")
         else:
             scale_factor = 1.75  # smaller font
             data.pop(" G ")

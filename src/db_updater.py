@@ -135,6 +135,8 @@ class DbUpdater:
         for championship in db.crud.get_all_championships():
             self._populate_teams_matches(championship)
             if self.notify:
+                self.db_logger.info(
+                    f"Updates found for championship {championship.name} - {championship.group_name}, notifying users")
                 await self.notify_users(championship.id)
                 self.notify = False
             else:
