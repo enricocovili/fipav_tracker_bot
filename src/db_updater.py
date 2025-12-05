@@ -3,8 +3,8 @@ import sqlalchemy.exc
 from telethon.sync import TelegramClient
 import scrapers.matches_rankings as rankings
 import scrapers.match_details as match_details
+import standing_manager
 import logging
-import random
 import os
 
 
@@ -137,22 +137,26 @@ class DbUpdater:
             if self.notify:
                 self.db_logger.info(
                     f"Updates found for championship {championship.name} - {championship.group_name}, notifying users")
-                await self.notify_users(championship.id)
+                standings = standing_manager.StandingManager(
+                    championship)
+                filename = standings.create_table(image=True)
+                await self.notify_users(championship.id, filename)
                 self.notify = False
             else:
                 self.db_logger.info(
                     f"No updates for championship {championship.name} - {championship.group_name}")
 
-    async def notify_users(self, championship_id) -> None:
+    async def notify_users(self, championship_id, table_filename: str) -> None:
         """Notify users about database changes"""
         users = db.crud.get_users()
         for user in users:
             if user.tracked_championship != championship_id:
                 continue
             try:
-                await self.bot.send_message(
-                    entity=user.id,
-                    message="🔔 Aggiornamenti disponibili per il campionato che stai seguendo!",
+                await self.bot.send_file(
+                    user.id,
+                    table_filename,
+                    caption=f"Aggiornamento!",
                 )
                 self.db_logger.info(
                     f"Notified user {user.username} about updates")
