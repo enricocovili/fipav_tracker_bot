@@ -153,10 +153,11 @@ class DbUpdater:
             if user.tracked_championship != championship_id:
                 continue
             try:
+                championship = db.crud.get_championship_by_id(championship_id)
                 await self.bot.send_file(
                     user.id,
                     table_filename,
-                    caption=f"Aggiornamento!",
+                    caption=f"Aggiornamento!\nPartite: {championship.url}",
                 )
                 self.db_logger.info(
                     f"Notified user {user.username} about updates")

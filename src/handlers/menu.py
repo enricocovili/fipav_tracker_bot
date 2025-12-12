@@ -32,7 +32,7 @@ class MainMenu(base_handler.BaseHandler):
         await event.client.send_file(
             event.chat,
             filename,
-            caption="Classifica",
+            caption=f"Classifica\nPartite: {standing_manager.championship.url}",
         )
 
     async def team_selection(
