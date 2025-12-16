@@ -36,9 +36,13 @@ class DbUpdater:
 
         self.db_logger.propagate = False  # prevents duplication to main log
 
-        self.notify: bool = False
+        self._reset_changes()
 
-    def _populate_teams_matches(self, championship) -> None:
+    def _reset_changes(self) -> None:
+        # containing changes after a scan. resetted after every scan.
+        self.changes = {"championship": -1, "teams": [], "matches": []}
+
+    def _populate_teams(self, championship) -> None:
         for data in self.match_scraper.load_teams(championship.url):
             data["championship_id"] = str(championship.id)
             existing_names = []
@@ -64,7 +68,8 @@ class DbUpdater:
                 db.crud.update_standing(_standing.id, **data)
                 self.db_logger.debug(
                     f"adding {data.get('name', 'None')} to db")
-                self.notify = True
+                self.changes["teams"].append(_standing)
+                self.changes["championship"] = championship.id
             else:
                 # check if any data changed
                 standing = db.crud.get_standings_in_championship(
@@ -82,24 +87,26 @@ class DbUpdater:
                             db.crud.update_standing(s.id, **data)
                             self.db_logger.debug(
                                 f"updating {data.get('name', 'None')} in db")
-                            self.notify = True
+                            self.changes["championship"] = championship.id
                             break
 
+    def _populate_matches(self, championship) -> None:
         for match in self.match_scraper.get_matches(championship.url):
+            if match.get("result") == "":
+                continue  # skip not played matches
+
+            # flip day - year position to match db yyyy-mm-dd
+            match["match_date"] = "/".join(
+                reversed(match["match_date"].split("/")))
+            match_timestamp = f"{match.get('match_date')} {match.get('time'):00}"
+
+            # retrieve matches info
+            home_team_id = db.crud.get_team_by_name(
+                match.get("home_team"))[0].id
+            away_team_id = db.crud.get_team_by_name(
+                match.get("away_team"))[0].id
+
             try:
-                if match.get("result") == "":
-                    continue  # skip not played matches
-                # flip day - year position to match db yyyy-mm-dd
-                match["match_date"] = "/".join(
-                    reversed(match["match_date"].split("/")))
-                match_timestamp = f"{match.get('match_date')} {match.get('time'):00}"
-
-                # retrieve matches info
-                home_team_id = db.crud.get_team_by_name(
-                    match.get("home_team"))[0].id
-                away_team_id = db.crud.get_team_by_name(
-                    match.get("away_team"))[0].id
-
                 _match = db.crud.create_match(
                     championship_id=championship.id,
                     match_date=match_timestamp,
@@ -108,22 +115,25 @@ class DbUpdater:
                     weekday=match.get("week_day"),
                     result=match.get("result"),
                 )
-
-                details = self.details_scraper.get_details(
-                    match.get("info_link"))
-
-                db.crud.update_match(
-                    _match.id,
-                    **{
-                        "city": details.get("Citta"),
-                        "address": details.get("Indirizzo"),
-                        "maps_url": details.get("maps_url"),
-                    },
-                )
-
             except sqlalchemy.exc.IntegrityError:
-                self.db_logger.debug("skipping match as already present in db")
+                self.db_logger.debug(
+                    "skipping match as already present in db")
                 continue
+
+            details = self.details_scraper.get_details(
+                match.get("info_link"))
+
+            db.crud.update_match(
+                _match.id,
+                **{
+                    "city": details.get("Citta"),
+                    "address": details.get("Indirizzo"),
+                    "maps_url": details.get("maps_url"),
+                },
+            )
+
+            self.changes["matches"].append(_match)
+            self.changes["championship"] = championship.id
 
             self.db_logger.debug("created match")
 
@@ -133,31 +143,46 @@ class DbUpdater:
         """
         self.db_logger.info("Running FIPAV website scan")
         for championship in db.crud.get_all_championships():
-            self._populate_teams_matches(championship)
-            if self.notify:
+            self._populate_teams(championship)
+            self._populate_matches(championship)
+            if self.changes.get("championship", -1) != -1:
                 self.db_logger.info(
                     f"Updates found for championship {championship.name} - {championship.group_name}, notifying users")
                 standings = standing_manager.StandingManager(
                     championship)
                 filename = standings.create_table(image=True)
-                await self.notify_users(championship.id, filename)
-                self.notify = False
+                await self.notify_users(filename)
+                self._reset_changes()
             else:
                 self.db_logger.info(
                     f"No updates for championship {championship.name} - {championship.group_name}")
 
-    async def notify_users(self, championship_id, table_filename: str) -> None:
+    async def notify_users(self, table_filename: str) -> None:
         """Notify users about database changes"""
         users = db.crud.get_users()
+        championship = db.crud.get_championship_by_id(
+            self.changes.get("championship", -1))
+        matches = self.changes.get("matches", [])
         for user in users:
-            if user.tracked_championship != championship_id:
+            if user.tracked_championship != championship.id:
                 continue
             try:
-                championship = db.crud.get_championship_by_id(championship_id)
+                home_teams = [db.crud.get_team_by_id(
+                    match.home_team_id) for match in matches]
+                away_teams = [db.crud.get_team_by_id(
+                    match.away_team_id) for match in matches]
+                caption = f"" \
+                    f"Aggiornamento!\n"\
+                    f"[Partite]({championship.url})\n"
+
+                for home_team, away_team, match in zip(home_teams, away_teams, matches):
+                    caption += f"{home_team.name}-{away_team.name}\t{match.result}\n"
+
                 await self.bot.send_file(
                     user.id,
                     table_filename,
-                    caption=f"Aggiornamento!\nPartite: {championship.url}",
+                    caption=caption,
+                    parse_mode="md",
                 )
                 self.db_logger.info(
                     f"Notified user {user.username} about updates")
