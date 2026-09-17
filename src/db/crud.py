@@ -54,8 +54,14 @@ def with_session(func):
 
 
 @with_session
-def create_championship(db, name, url, season, group=None):
-    champ = Championship(name=name, url=url, season=season, group=group)
+def create_championship(db, name, url, start_year, end_year, group_name=None):
+    champ = Championship(
+        name=name,
+        url=url,
+        start_year=start_year,
+        end_year=end_year,
+        group_name=group_name,
+    )
     db.add(champ)
     db.flush()
     db.refresh(champ)
