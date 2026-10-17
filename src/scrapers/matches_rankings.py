@@ -45,7 +45,7 @@ class MatchesRankingsScraper(BaseScraper):
         return soup.select_one("tr.pari, tr.dispari") is not None
 
     def get_matches(self, url: str) -> list[dict]:
-        res = self.session.get(url)
+        res = self.session.get(url, timeout=10)
         res.raise_for_status()
         soup = bs4.BeautifulSoup(res.text, "html.parser")
         matches = []
