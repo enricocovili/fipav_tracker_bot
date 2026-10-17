@@ -37,6 +37,13 @@ class MatchesRankingsScraper(BaseScraper):
         9: None,  # Skip
     }
 
+    def group_exists(self, url: str) -> bool:
+        """FIPAV answers for unknown groups with a page without any standings row."""
+        res = self.session.get(url)
+        res.raise_for_status()
+        soup = bs4.BeautifulSoup(res.text, "html.parser")
+        return soup.select_one("tr.pari, tr.dispari") is not None
+
     def get_matches(self, url: str) -> list[dict]:
         res = self.session.get(url)
         res.raise_for_status()

@@ -153,14 +153,13 @@ class DbUpdater:
                     f"Updates found for championship {championship.name} - {championship.group_name}, notifying users")
                 standings = standing_manager.StandingManager(
                     championship)
-                filename = standings.create_table(image=True)
-                await self.notify_users(filename)
+                await self.notify_users(standings)
                 self._reset_changes()
             else:
                 self.db_logger.info(
                     f"No updates for championship {championship.name} - {championship.group_name}")
 
-    async def notify_users(self, table_filename: str) -> None:
+    async def notify_users(self, standings: standing_manager.StandingManager) -> None:
         """Notify users about database changes"""
         championship = db.crud.get_championship_by_id(
             self.changes.get("championship", -1))
@@ -182,8 +181,16 @@ class DbUpdater:
                 recipients[user.id] = (
                     user, known + [m for m in team_matches if m not in known])
 
+        # one image per distinct set of highlighted teams, not per user
+        team_ids = {s.team_id for s in standings.standings}
+        images: dict[frozenset[int], bytes] = {}
+
         for user, user_matches in recipients.values():
             try:
+                highlight = frozenset(
+                    t.id for t in db.crud.get_user_teams(user.id)) & team_ids
+                if highlight not in images:
+                    images[highlight] = standings.create_image(highlight)
                 caption = f"" \
                     f"Aggiornamento!\n"\
                     f"[Partite]({championship.url})\n"
@@ -195,7 +202,7 @@ class DbUpdater:
 
                 await self.bot.send_file(
                     user.id,
-                    table_filename,
+                    standing_manager.StandingManager.as_file(images[highlight]),
                     caption=caption,
                     parse_mode="md",
                 )

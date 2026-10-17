@@ -85,6 +85,17 @@ def get_championships_by_name(db, name):
 
 
 @with_session
+def get_championship(db, name, group_name, start_year, end_year):
+    return (
+        db.query(Championship)
+        .filter_by(
+            name=name, group_name=group_name, start_year=start_year, end_year=end_year
+        )
+        .first()
+    )
+
+
+@with_session
 def update_championship(db, ch_id, **fields):
     champ = db.get(Championship, ch_id)
     if not champ:

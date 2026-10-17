@@ -11,6 +11,9 @@ from db.models import Championship
 class MainMenu(base_handler.BaseHandler):
     back_to_menu_button = Button.inline("Torna al menu", b"_menu")
     back_to_championship_button = Button.inline("Torna")
+    back_to_start_button = Button.inline("Torna al menu principale", b"_menu_start")
+    explore_button = Button.inline("🏆 Esplora i campionati", b"_menu_explore")
+    profile_button = Button.inline("👤 Il mio profilo", b"_menu_profile")
 
     async def send_standings(
         event: events.newmessage.NewMessage.Event, is_avulsa: bool
@@ -23,7 +26,9 @@ class MainMenu(base_handler.BaseHandler):
             standing_manager = StandingManager(
                 championship=user_state.championship_selected, is_avulsa=is_avulsa
             )
-            filename = standing_manager.create_table(image=True)
+            png = standing_manager.create_image(
+                {t.id for t in db.crud.get_user_teams(event.chat_id)}
+            )
         except Exception as e:
             logging.error(e)
             await event.edit(f"Error while processing: {e}")
@@ -31,7 +36,7 @@ class MainMenu(base_handler.BaseHandler):
         await loading_msg.delete()
         await event.client.send_file(
             event.chat,
-            filename,
+            StandingManager.as_file(png),
             caption=f"Classifica\nPartite: {standing_manager.championship.url}",
         )
 
@@ -99,25 +104,31 @@ class MainMenu(base_handler.BaseHandler):
                         b"_menu_campionship_rankings",
                     )
                 ],
-                [Button.inline("Torna alla scelta campionato",
-                               b"_menu_start")],
+                [Button.inline("Torna alla scelta girone",
+                               f"_championship_{championship.id}".encode())],
             ],
         )
 
     @events.register(events.CallbackQuery)
     async def callback(event: events.newmessage.NewMessage.Event):
         data: str = event.data.decode()
+        user_state = event.client.users_state.setdefault(
+            event.chat_id, UserState())
 
         if data.startswith("_championship_choice_"):
-            event.client.users_state[
-                event.chat_id
-            ].championship_selected = db.crud.get_championship_by_id(
+            user_state.championship_selected = db.crud.get_championship_by_id(
                 data.split("_")[-1]
             )
             await MainMenu.user_choice(event)
             return
 
-        campionato = event.client.users_state[event.chat_id].championship_selected
+        if data.startswith("_championship_"):
+            await MainMenu.group_selection(
+                event, db.crud.get_championship_by_id(data.split("_")[-1])
+            )
+            return
+
+        campionato = user_state.championship_selected
 
         if data.startswith("_team_choice_"):
             team_id = int(data.split("_")[-2])
@@ -147,6 +158,10 @@ class MainMenu(base_handler.BaseHandler):
         match event.data:
             case b"_menu_start":
                 await MainMenu.handle(event)
+            case b"_menu_explore":
+                await MainMenu.championship_selection(event)
+            case b"_menu_profile":
+                await MainMenu.show_profile(event)
             case b"_menu":
                 await MainMenu.user_choice(event)
             case b"_menu_enable_team_notification":
@@ -193,32 +208,82 @@ class MainMenu(base_handler.BaseHandler):
             case _:
                 await event.edit("Comando non riconosciuto.")
 
-    @events.register(events.NewMessage(pattern="/start"))
-    async def handle(event: events.newmessage.NewMessage):
-        bot = event.client
-        # retrieve championships from db
-        championships = db.crud.get_all_championships()
-        bot.users_state[event.chat_id] = UserState()
-        message_text = (
-            "Attualmente solo FIPAV Modena è supportata.\nScegli un campionato:"
-        )
+    @staticmethod
+    async def reply(event, text: str, buttons) -> None:
+        """Edit the message when coming from a button, else send a new one."""
+        if hasattr(event.original_update, "data"):
+            await event.edit(text, buttons=buttons)
+        else:
+            await event.client.send_message(
+                event.chat, message=text, buttons=buttons)
+
+    async def championship_selection(event: events.newmessage.NewMessage.Event):
+        """Whole championships (all their groups merged under one name)."""
         tracked_ids = {
             c.id for c in db.crud.get_user_championships(event.chat_id)}
+        groups_by_name: dict[str, list[Championship]] = {}
+        for championship in db.crud.get_all_championships():
+            groups_by_name.setdefault(championship.name, []).append(championship)
         buttons = [
             [
                 Button.inline(
-                    f"{'🔔 ' if championship.id in tracked_ids else ''}"
-                    f"{championship.name} - {championship.group_name}",
-                    f"_championship_choice_{championship.id}".encode(),
+                    f"{'🔔 ' if tracked_ids & {g.id for g in groups} else ''}{name}",
+                    f"_championship_{groups[0].id}".encode(),
                 )
             ]
-            for championship in championships
+            for name, groups in groups_by_name.items()
         ]
-        if hasattr(event.original_update, "data"):  # back to menu from a submenu
-            await event.edit(message_text, buttons=buttons)
-        else:  # plain new message (sent by a command)
-            await bot.send_message(
-                event.chat,
-                message=message_text,
-                buttons=buttons,
-            )
+        buttons.append([MainMenu.back_to_start_button])
+        await MainMenu.reply(event, "Scegli un campionato:", buttons)
+
+    async def group_selection(
+        event: events.newmessage.NewMessage.Event, championship: Championship
+    ):
+        tracked_ids = {
+            c.id for c in db.crud.get_user_championships(event.chat_id)}
+        groups = db.crud.get_championships_by_name(championship.name)
+        buttons = [
+            [
+                Button.inline(
+                    f"{'🔔 ' if group.id in tracked_ids else ''}Girone {group.group_name}",
+                    f"_championship_choice_{group.id}".encode(),
+                )
+            ]
+            for group in sorted(groups, key=lambda g: g.group_name or "")
+        ]
+        buttons.append(
+            [Button.inline("Torna alla scelta campionato", b"_menu_explore")])
+        await event.edit(
+            f"**{championship.name}**\nScegli un girone:", buttons=buttons)
+
+    async def show_profile(event: events.newmessage.NewMessage.Event):
+        championships = db.crud.get_user_championships(event.chat_id)
+        teams = db.crud.get_user_teams(event.chat_id)
+        championships_text = "\n".join(
+            f"• {c.name} - Girone {c.group_name}" for c in championships
+        ) or "nessuno"
+        teams_text = "\n".join(
+            f"• {t.name}" for t in teams) or "nessuna"
+        await MainMenu.reply(
+            event,
+            f"**Il tuo profilo**\n\n"
+            f"**Campionati tracciati**\n{championships_text}\n\n"
+            f"**Squadre tracciate**\n{teams_text}",
+            [
+                [MainMenu.explore_button],
+                [MainMenu.back_to_start_button],
+            ],
+        )
+
+    @events.register(events.NewMessage(pattern="/profile"))
+    async def profile(event: events.newmessage.NewMessage):
+        await MainMenu.show_profile(event)
+
+    @events.register(events.NewMessage(pattern="/start"))
+    async def handle(event: events.newmessage.NewMessage):
+        event.client.users_state[event.chat_id] = UserState()
+        await MainMenu.reply(
+            event,
+            "**Tracciamento partite per FIPAV Modena**",
+            [[MainMenu.explore_button], [MainMenu.profile_button]],
+        )

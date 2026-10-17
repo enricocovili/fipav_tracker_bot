@@ -49,6 +49,7 @@ async def periodic_db_update():
 
 async def main():
     bot.add_event_handler(handlers.menu.MainMenu.handle)
+    bot.add_event_handler(handlers.menu.MainMenu.profile)
     bot.add_event_handler(handlers.menu.MainMenu.callback)
 
     bot.users_state = {}

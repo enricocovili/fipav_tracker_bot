@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Adds a new championship and runs the same team/match scraping logic used
-# by the scheduled DbUpdater scan, to populate teams/matches/standings
-# automatically.
+# Adds a new championship with all of its groups (gironi) and runs the same
+# team/match scraping logic used by the scheduled DbUpdater scan, to populate
+# teams/matches/standings automatically.
 #
 # Copies the latest src/ files into the running app container (the image
 # bakes src/ in at build time, it isn't a live volume mount) and runs the
@@ -10,7 +10,9 @@
 # Usage:
 #   ./add_championship.sh --name "PRIMA DIVISIONE MASCHILE" \
 #       --url "https://www.fipav.mo.it/fipav/new/calendari.jsp?cat=1DM&girone=A&descr=...&classifica=1" \
-#       --start-year 2025 --end-year 2026 --group-name A
+#       --start-year 2025 --end-year 2026
+# The URL can be the one of any group: all existing groups are added.
+# Pass --group-name G to add that single group only.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -24,4 +26,5 @@ CONTAINER="fipav_tracker_telegram_bot"
 
 docker cp src/add_championship.py "$CONTAINER":/app/src/add_championship.py
 docker cp src/db/crud.py "$CONTAINER":/app/src/db/crud.py
+docker cp src/scrapers/matches_rankings.py "$CONTAINER":/app/src/scrapers/matches_rankings.py
 docker exec "$CONTAINER" python src/add_championship.py "$@"
