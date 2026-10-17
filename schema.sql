@@ -55,7 +55,19 @@ CREATE TABLE standings (
 -- Users table
 CREATE TABLE users (
     id INT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL,
-    tracked_championship INT REFERENCES championships(id) ON DELETE SET NULL,
-    tracked_team INT REFERENCES teams(id) ON DELETE SET NULL
+    username VARCHAR(50) NOT NULL
+);
+
+-- Championships tracked by each user (many-to-many)
+CREATE TABLE user_championships (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    championship_id INT NOT NULL REFERENCES championships(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, championship_id)
+);
+
+-- Teams tracked by each user (many-to-many)
+CREATE TABLE user_teams (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    team_id INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, team_id)
 );

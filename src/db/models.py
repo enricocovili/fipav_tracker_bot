@@ -1,7 +1,51 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    ForeignKey,
+    Table,
+    TIMESTAMP,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+# Championships a user receives update notifications for (many-to-many)
+user_championships = Table(
+    "user_championships",
+    Base.metadata,
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "championship_id",
+        Integer,
+        ForeignKey("championships.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+# Teams a user receives match notifications for (many-to-many)
+user_teams = Table(
+    "user_teams",
+    Base.metadata,
+    Column(
+        "user_id",
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "team_id",
+        Integer,
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
 
 
 class Championship(Base):
@@ -115,16 +159,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(50), nullable=False)
 
-    tracked_championship = Column(
-        Integer,
-        ForeignKey("championships.id", ondelete="SET NULL"),
-        nullable=True,
+    tracked_championships = relationship(
+        "Championship", secondary=user_championships, passive_deletes=True
     )
-    tracked_team = Column(
-        Integer,
-        ForeignKey("teams.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-
-    championship = relationship("Championship", foreign_keys=[tracked_championship])
-    team = relationship("Team", foreign_keys=[tracked_team])
+    tracked_teams = relationship("Team", secondary=user_teams, passive_deletes=True)

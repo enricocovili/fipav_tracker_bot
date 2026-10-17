@@ -159,23 +159,35 @@ class DbUpdater:
 
     async def notify_users(self, table_filename: str) -> None:
         """Notify users about database changes"""
-        users = db.crud.get_users()
         championship = db.crud.get_championship_by_id(
             self.changes.get("championship", -1))
         matches = self.changes.get("matches", [])
-        for user in users:
-            if user.tracked_championship != championship.id:
-                continue
+
+        # users tracking the whole championship get every new match
+        recipients = {
+            user.id: (user, matches)
+            for user in db.crud.get_users_tracking_championship(championship.id)
+        }
+        # users tracking single teams only get the matches involving them
+        for team_id in {t for m in matches for t in (m.home_team_id, m.away_team_id)}:
+            team_matches = [
+                m for m in matches if team_id in (m.home_team_id, m.away_team_id)]
+            for user in db.crud.get_users_tracking_team(team_id):
+                if user.id in recipients and recipients[user.id][1] is matches:
+                    continue  # already receives the whole championship
+                known = recipients.get(user.id, (user, []))[1]
+                recipients[user.id] = (
+                    user, known + [m for m in team_matches if m not in known])
+
+        for user, user_matches in recipients.values():
             try:
-                home_teams = [db.crud.get_team_by_id(
-                    match.home_team_id) for match in matches]
-                away_teams = [db.crud.get_team_by_id(
-                    match.away_team_id) for match in matches]
                 caption = f"" \
                     f"Aggiornamento!\n"\
                     f"[Partite]({championship.url})\n"
 
-                for home_team, away_team, match in zip(home_teams, away_teams, matches):
+                for match in user_matches:
+                    home_team = db.crud.get_team_by_id(match.home_team_id)
+                    away_team = db.crud.get_team_by_id(match.away_team_id)
                     caption += f"{home_team.name}-{away_team.name}\t{match.result}\n"
 
                 await self.bot.send_file(

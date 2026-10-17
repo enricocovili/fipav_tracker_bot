@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy import case
 from sqlalchemy.orm import sessionmaker, scoped_session, Session
 
-from db.models import Championship, Team, Match, Standing, User
+from db.models import Championship, Team, Match, Standing, User, user_championships, user_teams
 
 # -------------------
 # Database setup
@@ -294,15 +294,8 @@ def create_user(
     db: Session,
     id: int,
     username: str,
-    tracked_championship: int = None,
-    tracked_team: int = None,
 ):
-    user = User(
-        id=id,
-        username=username,
-        tracked_championship=tracked_championship,
-        tracked_team=tracked_team,
-    )
+    user = User(id=id, username=username)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -339,6 +332,120 @@ def delete_user(db: Session, user_id: int):
     db.delete(user)
     db.commit()
     return user
+
+
+# -------------------
+# User championship tracking
+# -------------------
+
+
+@with_session
+def get_user_championships(db: Session, user_id: int):
+    return (
+        db.query(Championship)
+        .join(user_championships, Championship.id == user_championships.c.championship_id)
+        .filter(user_championships.c.user_id == user_id)
+        .all()
+    )
+
+
+@with_session
+def is_tracking_championship(db: Session, user_id: int, championship_id: int) -> bool:
+    return (
+        db.query(user_championships)
+        .filter_by(user_id=user_id, championship_id=championship_id)
+        .first()
+        is not None
+    )
+
+
+@with_session
+def track_championship(db: Session, user_id: int, championship_id: int) -> None:
+    """Idempotently add a championship to the user's tracked ones."""
+    if not db.get(User, user_id) or not db.get(Championship, championship_id):
+        return
+    already = (
+        db.query(user_championships)
+        .filter_by(user_id=user_id, championship_id=championship_id)
+        .first()
+    )
+    if not already:
+        db.execute(
+            user_championships.insert().values(
+                user_id=user_id, championship_id=championship_id
+            )
+        )
+
+
+@with_session
+def untrack_championship(db: Session, user_id: int, championship_id: int) -> None:
+    db.execute(
+        user_championships.delete().where(
+            (user_championships.c.user_id == user_id)
+            & (user_championships.c.championship_id == championship_id)
+        )
+    )
+
+
+@with_session
+def get_users_tracking_championship(db: Session, championship_id: int):
+    return (
+        db.query(User)
+        .join(user_championships, User.id == user_championships.c.user_id)
+        .filter(user_championships.c.championship_id == championship_id)
+        .all()
+    )
+
+
+# -------------------
+# User team tracking
+# -------------------
+
+
+@with_session
+def get_user_teams(db: Session, user_id: int):
+    return (
+        db.query(Team)
+        .join(user_teams, Team.id == user_teams.c.team_id)
+        .filter(user_teams.c.user_id == user_id)
+        .all()
+    )
+
+
+@with_session
+def is_tracking_team(db: Session, user_id: int, team_id: int) -> bool:
+    return (
+        db.query(user_teams).filter_by(user_id=user_id, team_id=team_id).first()
+        is not None
+    )
+
+
+@with_session
+def track_team(db: Session, user_id: int, team_id: int) -> None:
+    """Idempotently add a team to the user's tracked ones."""
+    if not db.get(User, user_id) or not db.get(Team, team_id):
+        return
+    if not db.query(user_teams).filter_by(user_id=user_id, team_id=team_id).first():
+        db.execute(user_teams.insert().values(user_id=user_id, team_id=team_id))
+
+
+@with_session
+def untrack_team(db: Session, user_id: int, team_id: int) -> None:
+    db.execute(
+        user_teams.delete().where(
+            (user_teams.c.user_id == user_id) & (user_teams.c.team_id == team_id)
+        )
+    )
+
+
+@with_session
+def get_users_tracking_team(db: Session, team_id: int):
+    return (
+        db.query(User)
+        .join(user_teams, User.id == user_teams.c.user_id)
+        .filter(user_teams.c.team_id == team_id)
+        .all()
+    )
 
 
 # -------------------
