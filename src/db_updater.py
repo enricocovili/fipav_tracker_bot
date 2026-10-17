@@ -78,17 +78,20 @@ class DbUpdater:
                 for s in standing:
                     if s.team.name != data["name"]:
                         continue
-                    for k, v in data.items():
-                        try:
-                            db_val = getattr(s, k)
-                        except AttributeError:
-                            continue
-                        if str(db_val) != str(v):
-                            db.crud.update_standing(s.id, **data)
-                            self.db_logger.debug(
-                                f"updating {data.get('name', 'None')} in db")
-                            self.changes["championship"] = championship.id
-                            break
+                    changed = [
+                        k for k, v in data.items()
+                        if hasattr(s, k) and str(getattr(s, k)) != str(v)
+                    ]
+                    if not changed:
+                        continue
+                    db.crud.update_standing(s.id, **data)
+                    self.db_logger.info(
+                        f"standing of {data.get('name', 'None')} changed: {', '.join(changed)}")
+                    # the site reshuffles ranks on its own (e.g. tie-breaks
+                    # between teams with equal stats): only notify when
+                    # something other than the rank changed
+                    if changed != ["rank"]:
+                        self.changes["championship"] = championship.id
 
     def _populate_matches(self, championship) -> None:
         for match in self.match_scraper.get_matches(championship.url):
