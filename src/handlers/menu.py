@@ -37,7 +37,10 @@ class MainMenu(base_handler.BaseHandler):
         await event.client.send_file(
             event.chat,
             StandingManager.as_file(png),
-            caption=f"Classifica\nPartite: {standing_manager.championship.url}",
+            buttons=[
+                [Button.url("📅 Partite", standing_manager.championship.url)],
+                [Button.inline("Torna al menu", b"_menu_new")],
+            ],
         )
 
     async def team_selection(
@@ -52,13 +55,13 @@ class MainMenu(base_handler.BaseHandler):
             else set()
         )
         buttons = [
-            [
-                Button.inline(
-                    f"{'🔔 ' if team.id in tracked_ids else ''}{team.name}",
-                    f"_team_choice_{team.id}_{event_type}")
-                for team in teams[i: i + 1]
-            ]
-            for i in range(0, len(teams))
+        [
+            Button.inline(
+                f"{'🔔 ' if team.id in tracked_ids else ''}{team.name}",
+                f"_team_choice_{team.id}_{event_type}")
+            for team in teams[i: i + 1]
+        ]
+        for i in range(0, len(teams))
         ]
         buttons.append([Button.inline("Torna al menu", data=b"_menu")])
         await event.edit(
@@ -72,42 +75,47 @@ class MainMenu(base_handler.BaseHandler):
             db.crud.create_user(id=event.chat_id, username=event.chat.username)
             logging.info(f"Created User {event.chat.username}")
 
-    async def user_choice(event: events.newmessage.NewMessage.Event):
+    async def user_choice(
+        event: events.newmessage.NewMessage.Event, new_message: bool = False
+    ):
         championship = event.client.users_state[event.chat_id].championship_selected
         tracking = db.crud.is_tracking_championship(event.chat_id, championship.id)
-        await event.edit(
-            f"SELEZIONE:{championship.name}\nCosa vuoi fare?",
-            buttons=[
-                [
-                    Button.inline(
-                        "🔔 Abilita notifiche per squadra singola",
-                        b"_menu_enable_team_notification",
-                    )
-                ],
-                [
-                    Button.inline(
-                        "🔕 Disabilita notifiche per campionato"
-                        if tracking
-                        else "🔔 Abilita notifiche per campionato",
-                        b"_menu_toggle_championship_notification",
-                    )
-                ],
-                [
-                    Button.inline(
-                        "🔍 Informazioni su una squadra",
-                        b"_menu_get_team_info",
-                    )
-                ],
-                [
-                    Button.inline(
-                        "🥇 Classifica",
-                        b"_menu_campionship_rankings",
-                    )
-                ],
-                [Button.inline("Torna alla scelta girone",
-                               f"_championship_{championship.id}".encode())],
+        text = f"SELEZIONE:{championship.name}\nCosa vuoi fare?"
+        buttons = [
+            [
+                Button.inline(
+                    "🔔 Abilita notifiche per squadra singola",
+                    b"_menu_enable_team_notification",
+                )
             ],
-        )
+            [
+                Button.inline(
+                    "🔕 Disabilita notifiche per campionato"
+                    if tracking
+                    else "🔔 Abilita notifiche per campionato",
+                    b"_menu_toggle_championship_notification",
+                )
+            ],
+            [
+                Button.inline(
+                    "🔍 Informazioni su una squadra",
+                    b"_menu_get_team_info",
+                )
+            ],
+            [
+                Button.inline(
+                    "🥇 Classifica",
+                    b"_menu_campionship_rankings",
+                )
+            ],
+            [Button.inline("Torna alla scelta girone",
+                           f"_championship_{championship.id}".encode())],
+        ]
+        if new_message:
+            # coming from the standings photo: keep it and send the menu below
+            await event.client.send_message(event.chat, text, buttons=buttons)
+        else:
+            await event.edit(text, buttons=buttons)
 
     @events.register(events.CallbackQuery)
     async def callback(event: events.newmessage.NewMessage.Event):
@@ -164,6 +172,9 @@ class MainMenu(base_handler.BaseHandler):
                 await MainMenu.show_profile(event)
             case b"_menu":
                 await MainMenu.user_choice(event)
+            case b"_menu_new":
+                await event.answer()
+                await MainMenu.user_choice(event, new_message=True)
             case b"_menu_enable_team_notification":
                 await MainMenu.team_selection(event, campionato, "notification")
             case b"_menu_toggle_championship_notification":
@@ -225,13 +236,13 @@ class MainMenu(base_handler.BaseHandler):
         for championship in db.crud.get_all_championships():
             groups_by_name.setdefault(championship.name, []).append(championship)
         buttons = [
-            [
-                Button.inline(
-                    f"{'🔔 ' if tracked_ids & {g.id for g in groups} else ''}{name}",
-                    f"_championship_{groups[0].id}".encode(),
-                )
-            ]
-            for name, groups in groups_by_name.items()
+        [
+            Button.inline(
+                f"{'🔔 ' if tracked_ids & {g.id for g in groups} else ''}{name}",
+                f"_championship_{groups[0].id}".encode(),
+            )
+        ]
+        for name, groups in groups_by_name.items()
         ]
         buttons.append([MainMenu.back_to_start_button])
         await MainMenu.reply(event, "Scegli un campionato:", buttons)
@@ -243,13 +254,13 @@ class MainMenu(base_handler.BaseHandler):
             c.id for c in db.crud.get_user_championships(event.chat_id)}
         groups = db.crud.get_championships_by_name(championship.name)
         buttons = [
-            [
-                Button.inline(
-                    f"{'🔔 ' if group.id in tracked_ids else ''}Girone {group.group_name}",
-                    f"_championship_choice_{group.id}".encode(),
-                )
-            ]
-            for group in sorted(groups, key=lambda g: g.group_name or "")
+        [
+            Button.inline(
+                f"{'🔔 ' if group.id in tracked_ids else ''}Girone {group.group_name}",
+                f"_championship_choice_{group.id}".encode(),
+            )
+        ]
+        for group in sorted(groups, key=lambda g: g.group_name or "")
         ]
         buttons.append(
             [Button.inline("Torna alla scelta campionato", b"_menu_explore")])

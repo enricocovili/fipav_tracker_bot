@@ -90,6 +90,14 @@ class StandingManager:
     def create_table(self) -> str:
         return self._dataframe().to_string()
 
+    @property
+    def title(self) -> str:
+        if self.is_avulsa:
+            return f"{self.championship.name}\nClassifica avulsa"
+        group = self.championship.group_name
+        return f"{self.championship.name}\nClassifica girone {group}" if group else (
+            f"{self.championship.name}\nClassifica girone")
+
     def create_image(self, highlight_team_ids: set[int] = frozenset()) -> bytes:
         """Render the standings as a PNG sized after the number of teams.
 
@@ -119,6 +127,7 @@ class StandingManager:
         )
         table.auto_set_font_size(False)
         table.set_fontsize(fontsize)
+        ax.set_title(self.title, fontsize=fontsize + 4, weight="bold", pad=14)
 
         highlighted = {
             i for i, standing in enumerate(self.standings)
